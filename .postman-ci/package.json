@@ -1,0 +1,16 @@
+{
+  "name": "postman-bitbucket-jenkins-onboarding-tooling",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable Postman onboarding tooling for Bitbucket and Jenkins.",
+  "scripts": {
+    "validate:specs": "node scripts/validate-specs.mjs",
+    "check:breaking": "node scripts/check-breaking.mjs"
+  },
+  "dependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
+    "@postman-cse/onboarding-repo-sync": "0.13.0",
+    "yaml": "^2.8.1"
+  }
+}

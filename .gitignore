@@ -1,0 +1,30 @@
+# Node artifact files
+node_modules/
+dist/
+.postman-ci/node_modules/
+
+# Compiled Python bytecode
+*.py[cod]
+
+# Logs and test reports
+*.log
+TEST*.xml
+
+# IDE and OS files
+.idea/
+.DS_Store
+Thumbs.db
+
+# Jenkins/Postman generated files
+.jenkins-tools/
+.debug/
+bitbucket-repo.env
+bitbucket-repo.ps1
+lint-results.json
+lint-stderr.log
+lint-summary.md
+postman-*.env
+postman-*.ps1
+postman-*-result.json
+postman-service*.log
+api/openapi.bundled.yaml

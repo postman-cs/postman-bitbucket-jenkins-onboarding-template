@@ -1,0 +1,28 @@
+# Copy this file with the template and edit values for each service repo.
+# Runtime URLs and Governance group mappings are Jenkins parameters, not repo config.
+project:
+  name: sample-api
+  domain: sample-domain
+  domainCode: API
+  requesterEmail: api-owner@example.com
+
+api:
+  specPath: api/openapi.yaml
+  bundledSpecPath: api/openapi.bundled.yaml
+  baselineSpecPath: ""
+  commonSchemaPaths: []
+  contractChangePaths: []
+
+postman:
+  resourcesPath: .postman/resources.yaml
+  smokeFlowPath: ""
+
+ci:
+  installCommand: ""
+  buildCommand: ""
+  startCommand: ""
+  localBaseUrl: http://localhost:3000
+  healthPath: /health
+  localReadyTimeoutSeconds: 60
+  runLocalContract: true
+  runStageSmoke: false
