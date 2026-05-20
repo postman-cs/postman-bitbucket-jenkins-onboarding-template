@@ -5,15 +5,18 @@ import YAML from 'yaml';
 import { loadConfig, resolveRepoPath, rootDir } from './config.mjs';
 
 const config = loadConfig();
-const baselinePath = resolveRepoPath(config.api.baselineSpecPath);
 const currentPath = resolveRepoPath(config.api.specPath);
-const baselineDir = path.dirname(baselinePath);
+const baselinePath = config.api.baselineSpecPath
+  ? resolveRepoPath(config.api.baselineSpecPath)
+  : '';
 const currentDir = path.dirname(currentPath);
 
 if (!config.api.baselineSpecPath || !existsSync(baselinePath)) {
   console.log(`No baseline spec found at ${config.api.baselineSpecPath}; skipping breaking-change check.`);
   process.exit(0);
 }
+
+const baselineDir = path.dirname(baselinePath);
 
 function loadYaml(filePath) {
   return readFile(filePath, 'utf8').then((content) => YAML.parse(content));

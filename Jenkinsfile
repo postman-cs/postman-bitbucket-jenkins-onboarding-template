@@ -18,6 +18,61 @@ def isPullRequestBuild() {
   return (env.CHANGE_ID ?: env.BITBUCKET_PULL_REQUEST_ID ?: '').trim() != ''
 }
 
+def targetBranchName() {
+  def branchName = (env.CHANGE_TARGET ?: env.BITBUCKET_TARGET_BRANCH ?: 'main').trim()
+  if (branchName.startsWith('origin/')) {
+    branchName = branchName.substring('origin/'.length())
+  }
+  if (branchName.startsWith('refs/heads/')) {
+    branchName = branchName.substring('refs/heads/'.length())
+  }
+  if (!(branchName ==~ /^[A-Za-z0-9._\/-]+$/)) {
+    error("Unsupported target branch name: ${branchName}")
+  }
+
+  return branchName
+}
+
+def isTrustedPullRequestBuild() {
+  if (!isPullRequestBuild()) {
+    return false
+  }
+
+  def forkName = (
+    env.CHANGE_FORK ?:
+    env.BITBUCKET_PULL_REQUEST_SOURCE_REPOSITORY_FULL_NAME ?:
+    env.BITBUCKET_PULL_REQUEST_SOURCE_REPOSITORY_UUID ?:
+    ''
+  ).trim()
+
+  return forkName == ''
+}
+
+def checkoutTrustedPostmanCiForPullRequest() {
+  if (!isPullRequestBuild()) {
+    return
+  }
+
+  def branchName = targetBranchName()
+  echo "Refreshing .postman-ci from trusted target branch origin/${branchName}."
+  runCiScript(
+    """#!/usr/bin/env bash
+set -euo pipefail
+
+git fetch --no-tags origin "+refs/heads/${branchName}:refs/remotes/origin/${branchName}"
+git checkout "origin/${branchName}" -- .postman-ci
+""",
+    """
+\$ErrorActionPreference = 'Stop'
+
+git fetch --no-tags origin "+refs/heads/${branchName}:refs/remotes/origin/${branchName}"
+if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
+git checkout "origin/${branchName}" -- .postman-ci
+if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
+"""
+  )
+}
+
 def isMainBranchBuild() {
   def branchName = (env.BRANCH_NAME ?: env.BITBUCKET_BRANCH ?: env.GIT_BRANCH ?: '').trim()
   if (branchName.startsWith('origin/')) {
@@ -80,6 +135,7 @@ pipeline {
     POSTMAN_CI_CONFIG_PATH = '.postman-ci/config.yaml'
     POSTMAN_BOOTSTRAP = '.postman-ci/scripts/run-postman-bootstrap-cli.cjs'
     POSTMAN_REPO_SYNC = '.postman-ci/scripts/run-postman-repo-sync-cli.cjs'
+    POSTMAN_CLI_PACKAGE = 'postman-cli@1.38.0'
     POSTMAN_CSE_AUTHOR = 'Postman CSE'
     POSTMAN_CSE_AUTHOR_EMAIL = 'help@postman.com'
     POSTMAN_GENERATED_ARTIFACT_COMMIT_MESSAGE = 'chore: sync Postman artifacts and metadata'
@@ -105,14 +161,21 @@ pipeline {
       }
       steps {
         script {
+          checkoutTrustedPostmanCiForPullRequest()
           env.POSTMAN_CI_IS_MAIN_BUILD = shouldRunMainOnboardingBuild() ? 'true' : 'false'
+          def workspacePath = pwd()
+          def postmanCliBin = "${workspacePath}/.jenkins-tools/postman-cli/node_modules/.bin"
+          if (!isUnix()) {
+            postmanCliBin = "${workspacePath}\\.jenkins-tools\\postman-cli\\node_modules\\.bin"
+          }
+          env.PATH = "${postmanCliBin}${isUnix() ? ':' : ';'}${env.PATH}"
           runCiScript(
             '''#!/usr/bin/env bash
 set -euo pipefail
 
 rm -f bitbucket-repo.env bitbucket-repo.ps1 lint-results.json lint-stderr.log lint-summary.md postman-*.env postman-*.ps1 postman-*-result.json postman-service*.log
 
-npm ci --prefix .postman-ci
+npm ci --prefix .postman-ci --ignore-scripts
 node .postman-ci/scripts/emit-config-env.mjs > postman-ci.env
 . ./postman-ci.env
 
@@ -122,7 +185,7 @@ if [ "${POSTMAN_CI_IS_MAIN_BUILD:-false}" = "true" ]; then
 fi
 
 if ! command -v postman >/dev/null 2>&1; then
-  curl -o- "https://dl-cli.pstmn.io/install/unix.sh" | sh
+  npm install --prefix .jenkins-tools/postman-cli "$POSTMAN_CLI_PACKAGE" --ignore-scripts --no-audit --no-fund
 fi
 
 postman --version
@@ -132,7 +195,7 @@ $ErrorActionPreference = 'Stop'
 
 Remove-Item -Force -ErrorAction SilentlyContinue bitbucket-repo.env, bitbucket-repo.ps1, lint-results.json, lint-stderr.log, lint-summary.md, postman-*.env, postman-*.ps1, postman-*-result.json, postman-service*.log
 
-npm ci --prefix .postman-ci
+npm ci --prefix .postman-ci --ignore-scripts
 node .postman-ci/scripts/emit-config-env.mjs --format=ps1 | Set-Content -Encoding utf8 -Path postman-ci.ps1
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 . .\\postman-ci.ps1
@@ -144,11 +207,8 @@ if ($env:POSTMAN_CI_IS_MAIN_BUILD -eq 'true') {
 }
 
 if (-not (Get-Command postman -ErrorAction SilentlyContinue)) {
-  powershell.exe -NoProfile -InputFormat None -ExecutionPolicy AllSigned -Command "[System.Net.ServicePointManager]::SecurityProtocol = 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://dl-cli.pstmn.io/install/win64.ps1'))"
-  $windowsAppsPath = Join-Path $env:USERPROFILE 'AppData\\Local\\Microsoft\\WindowsApps'
-  if (Test-Path -LiteralPath $windowsAppsPath) {
-    $env:Path = "$windowsAppsPath;$env:Path"
-  }
+  npm install --prefix .jenkins-tools/postman-cli $env:POSTMAN_CLI_PACKAGE --ignore-scripts --no-audit --no-fund
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 postman --version
@@ -249,6 +309,20 @@ if (-not [string]::IsNullOrWhiteSpace($env:POSTMAN_CI_APP_BUILD_COMMAND)) {
           )
         }
         script {
+          if (!isTrustedPullRequestBuild()) {
+            echo 'Skipping credentialed Postman Governance lint for an untrusted fork pull request.'
+            runCiScript(
+              'node .postman-ci/scripts/validate-specs.mjs',
+              'node .postman-ci/scripts/validate-specs.mjs'
+            )
+            return
+          }
+        }
+        script {
+          if (!isTrustedPullRequestBuild()) {
+            return
+          }
+
           def runGovernanceLint = {
             runCiScript(
               '''#!/usr/bin/env bash
