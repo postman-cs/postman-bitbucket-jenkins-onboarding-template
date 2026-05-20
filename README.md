@@ -60,6 +60,7 @@ Common service-owned inputs:
 | `api/openapi.yaml` | Yes, unless configured differently | Source OpenAPI spec used for validation, Governance, and Postman generation |
 | `api/common-schemas.yaml` | Optional | Shared schemas referenced by the source spec |
 | `baselines/openapi.yaml` | Optional | Baseline spec used for breaking-change checks |
+| `changes-rules.yaml` | Optional | Custom breaking-change rules for `openapi-changes` |
 | `.postman-api-launchpad/flows/<name>/flow.yaml` | Optional | Smoke-flow input used to curate the generated Smoke collection |
 
 ## Configure The Service Repo
@@ -83,6 +84,7 @@ not match the target service repo.
 | `postman.resourcesPath` | `.postman/resources.yaml` | The Postman resource manifest should be stored somewhere else |
 | `postman.smokeFlowPath` | empty | The Smoke collection should be curated from a smoke-flow file |
 | `governance.breakingChangeMode` | `pr-native` | Choose `pr-native`, `baseline-only`, or `off` for OpenAPI breaking-change checks |
+| `governance.breakingRulesPath` | `changes-rules.yaml` | The repo has a custom `openapi-changes` rules file |
 | `governance.prReviewMentionEmail` | empty | A reviewer email should be included in failing PR Governance comments |
 | `ci.installCommand` | empty | The service app needs a dependency install step before build/test |
 | `ci.buildCommand` | empty | Jenkins should run a service build/test command before Postman onboarding |
@@ -112,6 +114,13 @@ Leave `api.baselineSpecPath` empty until the repo has a baseline spec. Leave
 `postman.smokeFlowPath` empty until the repo has a smoke-flow file. Leave
 `governance.prReviewMentionEmail` empty unless failing PR comments should call
 out a specific reviewer by email.
+
+The template uses [`pb33f/openapi-changes`](https://github.com/pb33f/openapi-changes)
+for OpenAPI breaking-change detection. If a service needs custom breaking-change
+rules, add a repo-owned `changes-rules.yaml` file or change
+`governance.breakingRulesPath` to the path used by that repo. See the
+[`openapi-changes` public repo](https://github.com/pb33f/openapi-changes) for
+the supported rules file format and examples.
 
 Do not put deployment URLs or Governance group names in `.postman-ci/config.yaml`.
 Those values are configured in Jenkins so the same repo can run in different
@@ -244,12 +253,14 @@ the pull request's local spec file. If the repo has not been bootstrapped yet,
 the PR check falls back to file-based Governance linting without a workspace ID.
 
 The same PR check also runs `openapi-changes summary --markdown --no-logo
---no-color --with-lines` against the target branch spec by default. The tool exits
-non-zero when it detects breaking changes, so either a Postman Governance
-failure or an OpenAPI breaking change fails the Jenkins build and updates the
-same Bitbucket PR comment. The pipeline installs `openapi-changes` from a
-pinned GitHub release, verifies the release archive SHA-256 checksum, checks
-archive paths before extraction, and does not use the npm package postinstall.
+--no-color --with-lines` against the target branch spec by default. When
+`governance.breakingRulesPath` points to an existing file, the pipeline passes
+that file with `--config`. The tool exits non-zero when it detects breaking
+changes, so either a Postman Governance failure or an OpenAPI breaking change
+fails the Jenkins build and updates the same Bitbucket PR comment. The pipeline
+installs `openapi-changes` from a pinned GitHub release, verifies the release
+archive SHA-256 checksum, checks archive paths before extraction, and does not
+use the npm package postinstall.
 
 To add the same API Governance summary to Bitbucket pull requests, set
 `BITBUCKET_PR_COMMENT_AUTH_TYPE` and `BITBUCKET_PR_COMMENT_CREDENTIALS_ID`.

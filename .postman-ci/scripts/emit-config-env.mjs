@@ -29,6 +29,7 @@ const values = {
   POSTMAN_CI_RESOURCES_PATH: config.postman.resourcesPath,
   POSTMAN_CI_SMOKE_FLOW_PATH: config.postman.smokeFlowPath,
   POSTMAN_CI_BREAKING_CHANGE_MODE: config.governance.breakingChangeMode,
+  POSTMAN_CI_BREAKING_RULES_PATH: config.governance.breakingRulesPath,
   POSTMAN_CI_PR_REVIEW_MENTION_EMAIL: config.governance.prReviewMentionEmail,
   POSTMAN_CI_APP_INSTALL_COMMAND: config.ci.installCommand,
   POSTMAN_CI_APP_BUILD_COMMAND: config.ci.buildCommand,

@@ -19,6 +19,7 @@ postman:
 
 governance:
   breakingChangeMode: pr-native
+  breakingRulesPath: changes-rules.yaml
   prReviewMentionEmail: ""
 
 ci:

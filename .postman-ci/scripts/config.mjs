@@ -24,6 +24,7 @@ const defaultConfig = {
   },
   governance: {
     breakingChangeMode: 'pr-native',
+    breakingRulesPath: 'changes-rules.yaml',
     prReviewMentionEmail: ''
   },
   ci: {
@@ -184,9 +185,19 @@ export function loadConfig() {
     'pr-native',
     'governance.breakingChangeMode'
   );
+  config.governance.breakingRulesPath = normalizeRepoPath(config.governance.breakingRulesPath, {
+    label: 'governance.breakingRulesPath',
+    allowEmpty: true
+  });
   config.governance.prReviewMentionEmail = String(
     config.governance.prReviewMentionEmail ?? ''
   ).trim();
+  if (
+    config.governance.breakingRulesPath &&
+    !config.api.contractChangePaths.includes(config.governance.breakingRulesPath)
+  ) {
+    config.api.contractChangePaths.push(config.governance.breakingRulesPath);
+  }
 
   config.ci.installCommand = String(config.ci.installCommand ?? config.ci.appInstallCommand ?? '').trim();
   config.ci.buildCommand = String(config.ci.buildCommand ?? config.ci.appBuildCommand ?? '').trim();
@@ -205,6 +216,7 @@ export function loadConfig() {
   config.api.bundled = config.api.bundledSpecPath;
   config.api.baseline = config.api.baselineSpecPath;
   config.api.commonSchemas = config.api.commonSchemaPaths;
+  config.governance.changesRulesPath = config.governance.breakingRulesPath;
   config.governance.prMentionEmail = config.governance.prReviewMentionEmail;
   config.ci.appInstallCommand = config.ci.installCommand;
   config.ci.appBuildCommand = config.ci.buildCommand;

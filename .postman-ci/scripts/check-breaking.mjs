@@ -123,16 +123,32 @@ function comparisonSource(config) {
   };
 }
 
-function runOpenApiChanges(previous, current) {
-  return spawnSync('openapi-changes', [
+function breakingRulesArgs(config) {
+  if (!config.governance.breakingRulesPath) {
+    return [];
+  }
+
+  const rulesPath = resolveRepoPath(config.governance.breakingRulesPath);
+  if (!existsSync(rulesPath)) {
+    return [];
+  }
+
+  return ['--config', config.governance.breakingRulesPath];
+}
+
+function runOpenApiChanges(previous, current, config) {
+  const commandArgs = [
     'summary',
     '--markdown',
     '--no-logo',
     '--no-color',
     '--with-lines',
+    ...breakingRulesArgs(config),
     previous,
     current
-  ], {
+  ];
+
+  return spawnSync('openapi-changes', commandArgs, {
     encoding: 'utf8'
   });
 }
@@ -166,7 +182,7 @@ if (source.skipped) {
   process.exit(0);
 }
 
-const result = runOpenApiChanges(source.previous, source.current);
+const result = runOpenApiChanges(source.previous, source.current, config);
 const stdout = stripAnsi(result.stdout);
 const stderr = stripAnsi(result.stderr);
 const status = result.status ?? (result.error ? 1 : 0);
