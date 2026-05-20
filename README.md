@@ -60,7 +60,7 @@ Common service-owned inputs:
 | `api/openapi.yaml` | Yes, unless configured differently | Source OpenAPI spec used for validation, Governance, and Postman generation |
 | `api/common-schemas.yaml` | Optional | Shared schemas referenced by the source spec |
 | `baselines/openapi.yaml` | Optional | Baseline spec used for breaking-change checks |
-| `.cse-buddy/flows/<name>/flow.yaml` | Optional | Smoke-flow input used to curate the generated Smoke collection |
+| `.postman-api-launchpad/flows/<name>/flow.yaml` | Optional | Smoke-flow input used to curate the generated Smoke collection |
 
 ## Configure The Service Repo
 
