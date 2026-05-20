@@ -59,13 +59,13 @@ def checkoutTrustedPostmanCiForPullRequest() {
     """#!/usr/bin/env bash
 set -euo pipefail
 
-git fetch --no-tags origin "+refs/heads/${branchName}:refs/remotes/origin/${branchName}"
+git rev-parse --verify "origin/${branchName}^{commit}" >/dev/null
 git checkout "origin/${branchName}" -- .postman-ci
 """,
     """
 \$ErrorActionPreference = 'Stop'
 
-git fetch --no-tags origin "+refs/heads/${branchName}:refs/remotes/origin/${branchName}"
+git rev-parse --verify "origin/${branchName}^{commit}" | Out-Null
 if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
 git checkout "origin/${branchName}" -- .postman-ci
 if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
