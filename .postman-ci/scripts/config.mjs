@@ -85,24 +85,72 @@ function normalizePath(value) {
   return String(value ?? '').trim().replace(/\\/g, '/');
 }
 
+function isWindowsAbsolutePath(value) {
+  return /^[A-Za-z]:\//.test(value);
+}
+
+function isInsideRoot(resolvedPath) {
+  const relativePath = path.relative(rootDir, resolvedPath);
+  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+}
+
+function normalizeRepoPath(value, { label = 'path', allowEmpty = false } = {}) {
+  const normalized = normalizePath(value);
+  if (!normalized) {
+    if (allowEmpty) {
+      return '';
+    }
+    throw new Error(`${label} is required.`);
+  }
+  if (path.isAbsolute(normalized) || isWindowsAbsolutePath(normalized)) {
+    throw new Error(`${label} must be relative to the repository root.`);
+  }
+
+  const resolvedPath = path.resolve(rootDir, normalized);
+  if (!isInsideRoot(resolvedPath)) {
+    throw new Error(`${label} must stay within the repository root.`);
+  }
+
+  return normalized;
+}
+
+function normalizeRepoPaths(values, label) {
+  return asArray(values).map((entry, index) =>
+    normalizeRepoPath(entry, { label: `${label}[${index}]` })
+  );
+}
+
 export function configPath() {
-  return normalizePath(process.env.POSTMAN_CI_CONFIG_PATH || '.postman-ci/config.yaml');
+  return normalizeRepoPath(process.env.POSTMAN_CI_CONFIG_PATH || '.postman-ci/config.yaml', {
+    label: 'POSTMAN_CI_CONFIG_PATH'
+  });
 }
 
 export function loadConfig() {
-  const filePath = path.resolve(rootDir, configPath());
+  const filePath = resolveRepoPath(configPath(), 'POSTMAN_CI_CONFIG_PATH');
   const rawConfig = existsSync(filePath)
     ? YAML.parse(readFileSync(filePath, 'utf8')) ?? {}
     : {};
   const config = mergeConfig(defaultConfig, rawConfig);
 
-  config.api.specPath = normalizePath(config.api.specPath ?? config.api.source);
-  config.api.bundledSpecPath = normalizePath(config.api.bundledSpecPath ?? config.api.bundled);
-  config.api.baselineSpecPath = normalizePath(config.api.baselineSpecPath ?? config.api.baseline);
-  config.api.commonSchemaPaths = asArray(
-    config.api.commonSchemaPaths ?? config.api.commonSchemas
-  ).map(normalizePath);
-  config.api.contractChangePaths = asArray(config.api.contractChangePaths).map(normalizePath);
+  config.api.specPath = normalizeRepoPath(config.api.specPath ?? config.api.source, {
+    label: 'api.specPath'
+  });
+  config.api.bundledSpecPath = normalizeRepoPath(config.api.bundledSpecPath ?? config.api.bundled, {
+    label: 'api.bundledSpecPath'
+  });
+  config.api.baselineSpecPath = normalizeRepoPath(config.api.baselineSpecPath ?? config.api.baseline, {
+    label: 'api.baselineSpecPath',
+    allowEmpty: true
+  });
+  config.api.commonSchemaPaths = normalizeRepoPaths(
+    config.api.commonSchemaPaths ?? config.api.commonSchemas,
+    'api.commonSchemaPaths'
+  );
+  config.api.contractChangePaths = normalizeRepoPaths(
+    config.api.contractChangePaths,
+    'api.contractChangePaths'
+  );
   if (config.api.contractChangePaths.length === 0) {
     config.api.contractChangePaths = [
       config.api.specPath,
@@ -110,8 +158,13 @@ export function loadConfig() {
     ].filter(Boolean);
   }
 
-  config.postman.resourcesPath = normalizePath(config.postman.resourcesPath);
-  config.postman.smokeFlowPath = normalizePath(config.postman.smokeFlowPath);
+  config.postman.resourcesPath = normalizeRepoPath(config.postman.resourcesPath, {
+    label: 'postman.resourcesPath'
+  });
+  config.postman.smokeFlowPath = normalizeRepoPath(config.postman.smokeFlowPath, {
+    label: 'postman.smokeFlowPath',
+    allowEmpty: true
+  });
 
   config.ci.installCommand = String(config.ci.installCommand ?? config.ci.appInstallCommand ?? '').trim();
   config.ci.buildCommand = String(config.ci.buildCommand ?? config.ci.appBuildCommand ?? '').trim();
@@ -137,8 +190,8 @@ export function loadConfig() {
   return config;
 }
 
-export function resolveRepoPath(repoRelativePath) {
-  return path.resolve(rootDir, normalizePath(repoRelativePath));
+export function resolveRepoPath(repoRelativePath, label = 'path') {
+  return path.resolve(rootDir, normalizeRepoPath(repoRelativePath, { label }));
 }
 
 export function toPosixPath(filePath) {

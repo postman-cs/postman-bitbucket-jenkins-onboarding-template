@@ -12,5 +12,8 @@
     "@apidevtools/swagger-parser": "^12.1.0",
     "@postman-cse/onboarding-repo-sync": "0.13.0",
     "yaml": "^2.8.1"
+  },
+  "overrides": {
+    "undici": "6.25.0"
   }
 }
