@@ -224,6 +224,13 @@ The key in `POSTMAN_GOVERNANCE_GROUPS_JSON` must match `project.domain` from
 PR Governance always prints a readable failure summary in the Jenkins console
 and archives the full `lint-results.json`.
 
+When `.postman/resources.yaml` contains a workspace ID from a previous
+bootstrap, PR Governance lints the bundled spec with that workspace context:
+`postman spec lint <bundled-spec> --workspace-id <workspace-id>`. This applies
+the Governance rules available to that Postman workspace while still checking
+the pull request's local spec file. If the repo has not been bootstrapped yet,
+the PR check falls back to file-based Governance linting without a workspace ID.
+
 To add the same Governance summary to Bitbucket pull requests, set
 `BITBUCKET_PR_COMMENT_AUTH_TYPE` and `BITBUCKET_PR_COMMENT_CREDENTIALS_ID`.
 The credential must have permission to write pull-request comments and tasks.

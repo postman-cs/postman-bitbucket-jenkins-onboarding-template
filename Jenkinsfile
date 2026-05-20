@@ -330,12 +330,20 @@ set -euo pipefail
 
 . ./postman-ci.env
 node .postman-ci/scripts/validate-specs.mjs
+node .postman-ci/scripts/postman-resource-env.mjs > postman-pr-resources.env
+. ./postman-pr-resources.env
 postman login --with-api-key "$POSTMAN_API_KEY"
 
+LINT_ARGS=("$POSTMAN_CI_BUNDLED_SPEC_PATH" --fail-severity WARNING -o json)
+if [ -n "${POSTMAN_WORKSPACE_ID:-}" ]; then
+  echo "Running Postman Governance lint against workspace $POSTMAN_WORKSPACE_ID."
+  LINT_ARGS+=(--workspace-id "$POSTMAN_WORKSPACE_ID")
+else
+  echo "No Postman workspace ID found in $POSTMAN_CI_RESOURCES_PATH; running file-based Postman Governance lint."
+fi
+
 set +e
-postman spec lint "$POSTMAN_CI_BUNDLED_SPEC_PATH" \
-  --fail-severity WARNING \
-  -o json > lint-results.json 2> lint-stderr.log
+postman spec lint "${LINT_ARGS[@]}" > lint-results.json 2> lint-stderr.log
 LINT_EXIT=$?
 set -e
 
@@ -351,9 +359,20 @@ $ErrorActionPreference = 'Stop'
 . .\\postman-ci.ps1
 node .postman-ci/scripts/validate-specs.mjs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+node .postman-ci/scripts/postman-resource-env.mjs --format=ps1 | Set-Content -Encoding utf8 -Path postman-pr-resources.ps1
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+. .\\postman-pr-resources.ps1
 postman login --with-api-key $env:POSTMAN_API_KEY
 
-cmd.exe /d /s /c "postman spec lint `"$env:POSTMAN_CI_BUNDLED_SPEC_PATH`" --fail-severity WARNING -o json > lint-results.json 2> lint-stderr.log"
+$LintArgs = @('spec', 'lint', $env:POSTMAN_CI_BUNDLED_SPEC_PATH, '--fail-severity', 'WARNING', '-o', 'json')
+if (-not [string]::IsNullOrWhiteSpace($env:POSTMAN_WORKSPACE_ID)) {
+  Write-Host "Running Postman Governance lint against workspace $env:POSTMAN_WORKSPACE_ID."
+  $LintArgs += @('--workspace-id', $env:POSTMAN_WORKSPACE_ID)
+} else {
+  Write-Host "No Postman workspace ID found in $env:POSTMAN_CI_RESOURCES_PATH; running file-based Postman Governance lint."
+}
+
+& postman @LintArgs > lint-results.json 2> lint-stderr.log
 $lintExit = $LASTEXITCODE
 
 node .postman-ci/scripts/report-governance-lint.mjs --lint-results lint-results.json --lint-stderr lint-stderr.log --lint-exit $lintExit
