@@ -23,6 +23,8 @@ bitbucket-repo.ps1
 lint-results.json
 lint-stderr.log
 lint-summary.md
+openapi-changes-summary.md
+openapi-changes.log
 postman-*.env
 postman-*.ps1
 postman-*-result.json

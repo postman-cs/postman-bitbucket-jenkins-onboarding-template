@@ -22,6 +22,10 @@ const defaultConfig = {
     resourcesPath: '.postman/resources.yaml',
     smokeFlowPath: ''
   },
+  governance: {
+    breakingChangeMode: 'pr-native',
+    prReviewMentionEmail: ''
+  },
   ci: {
     installCommand: '',
     buildCommand: '',
@@ -120,6 +124,14 @@ function normalizeRepoPaths(values, label) {
   );
 }
 
+function normalizeEnum(value, allowedValues, defaultValue, label) {
+  const normalized = String(value ?? defaultValue).trim().toLowerCase();
+  if (allowedValues.includes(normalized)) {
+    return normalized;
+  }
+  throw new Error(`${label} must be one of: ${allowedValues.join(', ')}.`);
+}
+
 export function configPath() {
   return normalizeRepoPath(process.env.POSTMAN_CI_CONFIG_PATH || '.postman-ci/config.yaml', {
     label: 'POSTMAN_CI_CONFIG_PATH'
@@ -166,6 +178,16 @@ export function loadConfig() {
     allowEmpty: true
   });
 
+  config.governance.breakingChangeMode = normalizeEnum(
+    config.governance.breakingChangeMode,
+    ['pr-native', 'baseline-only', 'off'],
+    'pr-native',
+    'governance.breakingChangeMode'
+  );
+  config.governance.prReviewMentionEmail = String(
+    config.governance.prReviewMentionEmail ?? ''
+  ).trim();
+
   config.ci.installCommand = String(config.ci.installCommand ?? config.ci.appInstallCommand ?? '').trim();
   config.ci.buildCommand = String(config.ci.buildCommand ?? config.ci.appBuildCommand ?? '').trim();
   config.ci.startCommand = String(config.ci.startCommand ?? config.ci.localStartCommand ?? '').trim();
@@ -183,6 +205,7 @@ export function loadConfig() {
   config.api.bundled = config.api.bundledSpecPath;
   config.api.baseline = config.api.baselineSpecPath;
   config.api.commonSchemas = config.api.commonSchemaPaths;
+  config.governance.prMentionEmail = config.governance.prReviewMentionEmail;
   config.ci.appInstallCommand = config.ci.installCommand;
   config.ci.appBuildCommand = config.ci.buildCommand;
   config.ci.localStartCommand = config.ci.startCommand;

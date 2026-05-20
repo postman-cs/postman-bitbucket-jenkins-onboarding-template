@@ -28,6 +28,8 @@ const values = {
   POSTMAN_CI_CONTRACT_CHANGE_PATHS_JSON: JSON.stringify(config.api.contractChangePaths),
   POSTMAN_CI_RESOURCES_PATH: config.postman.resourcesPath,
   POSTMAN_CI_SMOKE_FLOW_PATH: config.postman.smokeFlowPath,
+  POSTMAN_CI_BREAKING_CHANGE_MODE: config.governance.breakingChangeMode,
+  POSTMAN_CI_PR_REVIEW_MENTION_EMAIL: config.governance.prReviewMentionEmail,
   POSTMAN_CI_APP_INSTALL_COMMAND: config.ci.installCommand,
   POSTMAN_CI_APP_BUILD_COMMAND: config.ci.buildCommand,
   POSTMAN_CI_LOCAL_START_COMMAND: config.ci.startCommand,

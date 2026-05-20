@@ -121,7 +121,7 @@ pipeline {
     choice(name: 'POSTMAN_REPO_WRITE_MODE', choices: ['commit-and-push', 'none', 'commit-only'], description: 'How repo-sync handles generated Postman artifacts. commit-and-push uses Jenkins Bitbucket credentials.')
     string(name: 'POSTMAN_PUSH_BRANCH', defaultValue: '', description: 'Optional branch override for generated Postman artifact pushes. Defaults to PR/source/current branch.')
     string(name: 'BITBUCKET_CREDENTIALS_ID', defaultValue: 'bit-bucket-app-password-template', description: 'Jenkins username/password credential for pushing generated Postman artifacts to Bitbucket.')
-    choice(name: 'BITBUCKET_PR_COMMENT_AUTH_TYPE', choices: ['username-password', 'bearer-token', 'none'], description: 'Credential type used to write Postman Governance comments and tasks on Bitbucket pull requests.')
+    choice(name: 'BITBUCKET_PR_COMMENT_AUTH_TYPE', choices: ['username-password', 'bearer-token', 'none'], description: 'Credential type used to write API Governance comments and tasks on Bitbucket pull requests.')
     string(name: 'BITBUCKET_PR_COMMENT_CREDENTIALS_ID', defaultValue: 'template_repo_bb_admin', description: 'Optional Jenkins credential ID used to write Bitbucket PR Governance comments and tasks.')
     booleanParam(name: 'BITBUCKET_PR_CREATE_BLOCKING_TASK', defaultValue: true, description: 'Create or resolve a Bitbucket PR task for Governance failures. Requires Bitbucket merge checks to block on open tasks.')
     text(name: 'POSTMAN_RUNTIME_URLS_JSON', defaultValue: '{"TEST":"http://localhost:3000","STAGE":"https://stage.example.com","PROD":"https://api.example.com"}', description: 'JSON object mapping Postman environment names to base URLs.')
@@ -136,6 +136,7 @@ pipeline {
     POSTMAN_BOOTSTRAP = '.postman-ci/scripts/run-postman-bootstrap-cli.cjs'
     POSTMAN_REPO_SYNC = '.postman-ci/scripts/run-postman-repo-sync-cli.cjs'
     POSTMAN_CLI_PACKAGE = 'postman-cli@1.38.0'
+    OPENAPI_CHANGES_VERSION = '0.2.7'
     POSTMAN_CSE_AUTHOR = 'Postman CSE'
     POSTMAN_CSE_AUTHOR_EMAIL = 'help@postman.com'
     POSTMAN_GENERATED_ARTIFACT_COMMIT_MESSAGE = 'chore: sync Postman artifacts and metadata'
@@ -165,17 +166,20 @@ pipeline {
           env.POSTMAN_CI_IS_MAIN_BUILD = shouldRunMainOnboardingBuild() ? 'true' : 'false'
           def workspacePath = pwd()
           def postmanCliBin = "${workspacePath}/.jenkins-tools/postman-cli/node_modules/.bin"
+          def openapiChangesBin = "${workspacePath}/.jenkins-tools/openapi-changes/bin"
           if (!isUnix()) {
             postmanCliBin = "${workspacePath}\\.jenkins-tools\\postman-cli\\node_modules\\.bin"
+            openapiChangesBin = "${workspacePath}\\.jenkins-tools\\openapi-changes\\bin"
           }
-          env.PATH = "${postmanCliBin}${isUnix() ? ':' : ';'}${env.PATH}"
+          env.PATH = "${postmanCliBin}${isUnix() ? ':' : ';'}${openapiChangesBin}${isUnix() ? ':' : ';'}${env.PATH}"
           runCiScript(
             '''#!/usr/bin/env bash
 set -euo pipefail
 
-rm -f bitbucket-repo.env bitbucket-repo.ps1 lint-results.json lint-stderr.log lint-summary.md postman-*.env postman-*.ps1 postman-*-result.json postman-service*.log
+rm -f bitbucket-repo.env bitbucket-repo.ps1 lint-results.json lint-stderr.log lint-summary.md openapi-changes-summary.md openapi-changes.log postman-*.env postman-*.ps1 postman-*-result.json postman-service*.log
 
 npm ci --prefix .postman-ci --ignore-scripts
+node .postman-ci/scripts/install-openapi-changes.mjs
 node .postman-ci/scripts/emit-config-env.mjs > postman-ci.env
 . ./postman-ci.env
 
@@ -189,13 +193,16 @@ if ! command -v postman >/dev/null 2>&1; then
 fi
 
 postman --version
+openapi-changes version
 ''',
             '''
 $ErrorActionPreference = 'Stop'
 
-Remove-Item -Force -ErrorAction SilentlyContinue bitbucket-repo.env, bitbucket-repo.ps1, lint-results.json, lint-stderr.log, lint-summary.md, postman-*.env, postman-*.ps1, postman-*-result.json, postman-service*.log
+Remove-Item -Force -ErrorAction SilentlyContinue bitbucket-repo.env, bitbucket-repo.ps1, lint-results.json, lint-stderr.log, lint-summary.md, openapi-changes-summary.md, openapi-changes.log, postman-*.env, postman-*.ps1, postman-*-result.json, postman-service*.log
 
 npm ci --prefix .postman-ci --ignore-scripts
+node .postman-ci/scripts/install-openapi-changes.mjs
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 node .postman-ci/scripts/emit-config-env.mjs --format=ps1 | Set-Content -Encoding utf8 -Path postman-ci.ps1
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 . .\\postman-ci.ps1
@@ -212,6 +219,7 @@ if (-not (Get-Command postman -ErrorAction SilentlyContinue)) {
 }
 
 postman --version
+openapi-changes version
 '''
           )
         }
@@ -312,8 +320,20 @@ if (-not [string]::IsNullOrWhiteSpace($env:POSTMAN_CI_APP_BUILD_COMMAND)) {
           if (!isTrustedPullRequestBuild()) {
             echo 'Skipping credentialed Postman Governance lint for an untrusted fork pull request.'
             runCiScript(
-              'node .postman-ci/scripts/validate-specs.mjs',
-              'node .postman-ci/scripts/validate-specs.mjs'
+              '''#!/usr/bin/env bash
+set -euo pipefail
+
+node .postman-ci/scripts/validate-specs.mjs
+node .postman-ci/scripts/check-breaking.mjs --summary openapi-changes-summary.md --log openapi-changes.log
+''',
+              '''
+$ErrorActionPreference = 'Stop'
+
+node .postman-ci/scripts/validate-specs.mjs
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+node .postman-ci/scripts/check-breaking.mjs --summary openapi-changes-summary.md --log openapi-changes.log
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+'''
             )
             return
           }
@@ -330,6 +350,11 @@ set -euo pipefail
 
 . ./postman-ci.env
 node .postman-ci/scripts/validate-specs.mjs
+set +e
+node .postman-ci/scripts/check-breaking.mjs --summary openapi-changes-summary.md --log openapi-changes.log
+BREAKING_EXIT=$?
+set -e
+
 node .postman-ci/scripts/postman-resource-env.mjs > postman-pr-resources.env
 . ./postman-pr-resources.env
 postman login --with-api-key "$POSTMAN_API_KEY"
@@ -350,8 +375,13 @@ set -e
 node .postman-ci/scripts/report-governance-lint.mjs \
   --lint-results lint-results.json \
   --lint-stderr lint-stderr.log \
-  --lint-exit "$LINT_EXIT"
-exit "$LINT_EXIT"
+  --lint-exit "$LINT_EXIT" \
+  --breaking-summary openapi-changes-summary.md \
+  --breaking-log openapi-changes.log \
+  --breaking-exit "$BREAKING_EXIT"
+if [ "$LINT_EXIT" -ne 0 ] || [ "$BREAKING_EXIT" -ne 0 ]; then
+  exit 1
+fi
 ''',
               '''
 $ErrorActionPreference = 'Stop'
@@ -359,6 +389,9 @@ $ErrorActionPreference = 'Stop'
 . .\\postman-ci.ps1
 node .postman-ci/scripts/validate-specs.mjs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+node .postman-ci/scripts/check-breaking.mjs --summary openapi-changes-summary.md --log openapi-changes.log
+$breakingExit = $LASTEXITCODE
+
 node .postman-ci/scripts/postman-resource-env.mjs --format=ps1 | Set-Content -Encoding utf8 -Path postman-pr-resources.ps1
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 . .\\postman-pr-resources.ps1
@@ -375,8 +408,10 @@ if (-not [string]::IsNullOrWhiteSpace($env:POSTMAN_WORKSPACE_ID)) {
 & postman @LintArgs > lint-results.json 2> lint-stderr.log
 $lintExit = $LASTEXITCODE
 
-node .postman-ci/scripts/report-governance-lint.mjs --lint-results lint-results.json --lint-stderr lint-stderr.log --lint-exit $lintExit
-exit $lintExit
+node .postman-ci/scripts/report-governance-lint.mjs --lint-results lint-results.json --lint-stderr lint-stderr.log --lint-exit $lintExit --breaking-summary openapi-changes-summary.md --breaking-log openapi-changes.log --breaking-exit $breakingExit
+if (($lintExit -ne 0) -or ($breakingExit -ne 0)) {
+  exit 1
+}
 '''
             )
           }
@@ -1036,7 +1071,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0bitbucket-askpass.
 
   post {
     always {
-      archiveArtifacts artifacts: 'api/**/*.yaml,bitbucket-repo.env,bitbucket-repo.ps1,lint-results.json,lint-stderr.log,lint-summary.md,postman-*.env,postman-*.ps1,postman-*-result.json,postman-service*.log,.debug/postman-smoke-flow/**', allowEmptyArchive: true
+      archiveArtifacts artifacts: 'api/**/*.yaml,bitbucket-repo.env,bitbucket-repo.ps1,lint-results.json,lint-stderr.log,lint-summary.md,openapi-changes-summary.md,openapi-changes.log,postman-*.env,postman-*.ps1,postman-*-result.json,postman-service*.log,.debug/postman-smoke-flow/**', allowEmptyArchive: true
     }
   }
 }

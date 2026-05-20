@@ -5,12 +5,16 @@ const REPORT_MARKER = '<!-- postman-governance-report:v1 -->';
 const TASK_MARKER = 'postman-governance-task:v1';
 const MAX_CONSOLE_VIOLATIONS = 50;
 const MAX_COMMENT_VIOLATIONS = 100;
+const MAX_BREAKING_SUMMARY_CHARS = 12000;
 
 function parseArgs(argv) {
   const args = {
     lintResults: 'lint-results.json',
     lintStderr: 'lint-stderr.log',
-    lintExit: 0
+    lintExit: 0,
+    breakingSummary: 'openapi-changes-summary.md',
+    breakingLog: 'openapi-changes.log',
+    breakingExit: 0
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -25,10 +29,28 @@ function parseArgs(argv) {
     } else if (arg === '--lint-exit') {
       args.lintExit = Number(next || 0);
       index += 1;
+    } else if (arg === '--breaking-summary') {
+      args.breakingSummary = next;
+      index += 1;
+    } else if (arg === '--breaking-log') {
+      args.breakingLog = next;
+      index += 1;
+    } else if (arg === '--breaking-exit') {
+      args.breakingExit = Number(next || 0);
+      index += 1;
     }
   }
 
   return args;
+}
+
+function truncateBlock(value, maxLength = MAX_BREAKING_SUMMARY_CHARS) {
+  const text = String(value || '').trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, maxLength)}\n\n_Additional breaking-change output is available in the Jenkins artifact \`openapi-changes-summary.md\`._`;
 }
 
 function readText(filePath) {
@@ -139,6 +161,14 @@ function markdownLink(label, url) {
   return `[${label}](${url})`;
 }
 
+function breakingStatusLabel(exitCode, summary) {
+  const match = String(summary || '').match(/^Status:\s*([A-Za-z-]+)/m);
+  if (match) {
+    return match[1].toLowerCase();
+  }
+  return exitCode === 0 ? 'passed' : 'failed';
+}
+
 function currentCommit() {
   const envCommit = firstValue(process.env.GIT_COMMIT, process.env.BITBUCKET_COMMIT);
   if (envCommit) {
@@ -246,11 +276,12 @@ function shouldCreateTask() {
   return ['true', '1', 'yes', 'on'].includes(value);
 }
 
-function consoleSummary({ lintExit, violations, stderr, parseError }) {
+function consoleSummary({ lintExit, violations, stderr, parseError, breakingExit, breakingSummary }) {
   console.log('');
-  console.log('Postman Governance Summary');
-  console.log('--------------------------');
+  console.log('API Governance Summary');
+  console.log('----------------------');
   console.log(`Lint exit code: ${lintExit}`);
+  console.log(`Breaking-change exit code: ${breakingExit}`);
   console.log(`Violations: ${violations.length} (${countBySeverity(violations)})`);
 
   if (parseError) {
@@ -275,10 +306,17 @@ function consoleSummary({ lintExit, violations, stderr, parseError }) {
     console.log('------------------');
     console.log(stderr.trim());
   }
+
+  if (breakingSummary.trim()) {
+    console.log('');
+    console.log('OpenAPI Breaking Change Summary');
+    console.log('-------------------------------');
+    console.log(truncateBlock(breakingSummary, 3000));
+  }
 }
 
-function markdownReport({ lintExit, violations, parseError }) {
-  const failed = lintExit !== 0;
+function markdownReport({ lintExit, violations, parseError, breakingExit, breakingSummary, breakingLog }) {
+  const failed = lintExit !== 0 || breakingExit !== 0;
   const buildUrl = firstValue(process.env.BUILD_URL, process.env.RUN_DISPLAY_URL);
   const jobName = firstValue(process.env.JOB_NAME);
   const buildNumber = firstValue(process.env.BUILD_NUMBER);
@@ -286,17 +324,29 @@ function markdownReport({ lintExit, violations, parseError }) {
   const buildLabel = jobName && buildNumber ? `${jobName} #${buildNumber}` : 'Jenkins build';
   const build = markdownLink(buildLabel, buildUrl) || buildLabel;
   const status = failed ? 'failed' : 'passed';
+  const reviewMentionEmail = firstValue(process.env.POSTMAN_CI_PR_REVIEW_MENTION_EMAIL);
+  const breakingStatus = breakingStatusLabel(breakingExit, breakingSummary);
 
   const lines = [
     REPORT_MARKER,
-    `## Postman Governance ${status}`,
+    `## API Governance ${status}`,
     '',
     `Jenkins build: ${build}`,
   ];
   if (commit) {
     lines.push(`Commit: \`${commit}\``);
   }
-  lines.push('', `Violations: **${violations.length}** (${countBySeverity(violations)})`);
+  if (reviewMentionEmail && failed) {
+    lines.push(`Reviewer: ${reviewMentionEmail}`);
+  }
+
+  lines.push(
+    '',
+    `Postman Governance lint: **${lintExit === 0 ? 'passed' : 'failed'}**`,
+    `OpenAPI breaking-change check: **${breakingStatus}**`
+  );
+
+  lines.push('', '### Postman Governance Lint', '', `Violations: **${violations.length}** (${countBySeverity(violations)})`);
 
   if (parseError) {
     lines.push('', `Could not parse \`lint-results.json\`: \`${parseError}\``);
@@ -312,11 +362,23 @@ function markdownReport({ lintExit, violations, parseError }) {
     if (violations.length > MAX_COMMENT_VIOLATIONS) {
       lines.push('', `${violations.length - MAX_COMMENT_VIOLATIONS} more violation(s) are available in the Jenkins artifact \`lint-results.json\`.`);
     }
-  } else if (failed) {
+  } else if (lintExit !== 0) {
     lines.push('', 'Postman CLI failed but did not return governance violations in the lint JSON. Check `lint-stderr.log` and the Jenkins console for details.');
   }
 
-  lines.push('', 'Merge blocking is enforced by the failed Jenkins build status. If your Bitbucket merge checks require all PR tasks to be resolved, the generated Postman Governance task also blocks merge until the next passing run resolves it.');
+  lines.push('', '### OpenAPI Breaking Change Check');
+  if (breakingSummary.trim()) {
+    lines.push('', truncateBlock(breakingSummary));
+  } else if (breakingExit !== 0) {
+    lines.push('', 'The breaking-change check failed without producing a summary. Check `openapi-changes.log` in the Jenkins artifacts.');
+  } else {
+    lines.push('', 'No breaking-change summary was produced.');
+  }
+  if (breakingLog.trim() && breakingExit !== 0) {
+    lines.push('', '`openapi-changes.log` contains additional diagnostic output.');
+  }
+
+  lines.push('', 'Merge blocking is enforced by the failed Jenkins build status. If your Bitbucket merge checks require all PR tasks to be resolved, the generated API Governance task also blocks merge until the next passing run resolves it.');
 
   return `${lines.join('\n')}\n`;
 }
@@ -395,7 +457,7 @@ async function upsertReportComment({ repo, prId, auth, body }) {
   });
 }
 
-async function reconcileBlockingTask({ repo, prId, auth, lintExit, comment }) {
+async function reconcileBlockingTask({ repo, prId, auth, failed, comment }) {
   if (!shouldCreateTask()) {
     return;
   }
@@ -411,7 +473,7 @@ async function reconcileBlockingTask({ repo, prId, auth, lintExit, comment }) {
     task?.state !== 'RESOLVED' && String(task?.content?.raw || '').includes(TASK_MARKER)
   );
 
-  if (lintExit === 0) {
+  if (!failed) {
     if (openTask?.id) {
       await bitbucketRequest(`${tasksUrl}/${openTask.id}`, {
         method: 'PUT',
@@ -435,7 +497,7 @@ async function reconcileBlockingTask({ repo, prId, auth, lintExit, comment }) {
 
   const taskPayload = {
     content: {
-      raw: `Resolve Postman Governance failures before merge. (${TASK_MARKER})`
+      raw: `Resolve API Governance failures before merge. (${TASK_MARKER})`
     }
   };
   if (comment?.id) {
@@ -452,7 +514,7 @@ async function reconcileBlockingTask({ repo, prId, auth, lintExit, comment }) {
   console.log(`Created Bitbucket Governance task ${created.id}.`);
 }
 
-async function publishToBitbucket({ lintExit, reportBody }) {
+async function publishToBitbucket({ failed, reportBody }) {
   const repo = repositorySlug();
   const prId = pullRequestId();
   const auth = authHeader();
@@ -479,7 +541,7 @@ async function publishToBitbucket({ lintExit, reportBody }) {
     repo,
     prId,
     auth,
-    lintExit,
+    failed,
     comment
   });
 }
@@ -488,24 +550,32 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const lintResult = readJson(args.lintResults);
   const stderr = readText(args.lintStderr);
+  const breakingSummary = readText(args.breakingSummary);
+  const breakingLog = readText(args.breakingLog);
   const violations = normalizeViolations(lintResult);
+  const failed = args.lintExit !== 0 || args.breakingExit !== 0;
   const reportBody = markdownReport({
     lintExit: args.lintExit,
     violations,
-    parseError: lintResult.parseError
+    parseError: lintResult.parseError,
+    breakingExit: args.breakingExit,
+    breakingSummary,
+    breakingLog
   });
 
   consoleSummary({
     lintExit: args.lintExit,
     violations,
     stderr,
-    parseError: lintResult.parseError
+    parseError: lintResult.parseError,
+    breakingExit: args.breakingExit,
+    breakingSummary
   });
   writeFileSync('lint-summary.md', reportBody);
 
   try {
     await publishToBitbucket({
-      lintExit: args.lintExit,
+      failed,
       reportBody
     });
   } catch (error) {

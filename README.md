@@ -11,7 +11,7 @@ The template is designed to be copied into an existing service repo.
 After the pipeline is configured, Jenkins can:
 
 1. Validate and bundle the service OpenAPI spec.
-2. Run Postman Governance checks for pull requests that change API contract files.
+2. Run Postman Governance and OpenAPI breaking-change checks for pull requests that change API contract files.
 3. Create or update the Postman workspace, API spec, and generated collections.
 4. Curate the Smoke collection from the configured smoke-flow file.
 5. Export generated Postman artifacts into the repo workspace.
@@ -27,7 +27,7 @@ environment values without disabling generated-commit detection.
 
 | Jenkins build type | What runs |
 | --- | --- |
-| Bitbucket pull request build | PR Governance only, when configured contract files changed |
+| Bitbucket pull request build | PR Governance and breaking-change checks only, when configured contract files changed |
 | Push or merge to `main` | End-to-end onboarding flow: service dependency install, OpenAPI validation, breaking-change check, Postman onboarding/update, local Contract collection, Smoke collection, and optional generated-artifact push |
 | Other branch build | No Postman flow |
 
@@ -82,6 +82,8 @@ not match the target service repo.
 | `api.contractChangePaths` | empty | Different source contract files should trigger pull-request Governance checks |
 | `postman.resourcesPath` | `.postman/resources.yaml` | The Postman resource manifest should be stored somewhere else |
 | `postman.smokeFlowPath` | empty | The Smoke collection should be curated from a smoke-flow file |
+| `governance.breakingChangeMode` | `pr-native` | Choose `pr-native`, `baseline-only`, or `off` for OpenAPI breaking-change checks |
+| `governance.prReviewMentionEmail` | empty | A reviewer email should be included in failing PR Governance comments |
 | `ci.installCommand` | empty | The service app needs a dependency install step before build/test |
 | `ci.buildCommand` | empty | Jenkins should run a service build/test command before Postman onboarding |
 | `ci.startCommand` | empty | Jenkins should start the service locally before Contract collection tests |
@@ -100,8 +102,16 @@ used by the checks, but it does not need to trigger pull-request Governance by
 itself. When `api.contractChangePaths` is empty, the pipeline uses
 `api.specPath` plus any `api.commonSchemaPaths`.
 
+By default, `governance.breakingChangeMode=pr-native` compares pull requests
+against the target branch version of `api.specPath`. If Jenkins cannot find the
+target-branch spec, it falls back to `api.baselineSpecPath` when one is
+configured. Use `baseline-only` when a repo should always compare against a
+checked-in baseline spec, or `off` to disable the breaking-change check.
+
 Leave `api.baselineSpecPath` empty until the repo has a baseline spec. Leave
-`postman.smokeFlowPath` empty until the repo has a smoke-flow file.
+`postman.smokeFlowPath` empty until the repo has a smoke-flow file. Leave
+`governance.prReviewMentionEmail` empty unless failing PR comments should call
+out a specific reviewer by email.
 
 Do not put deployment URLs or Governance group names in `.postman-ci/config.yaml`.
 Those values are configured in Jenkins so the same repo can run in different
@@ -117,6 +127,7 @@ Install or configure the following on the Jenkins controller or agent:
 - Git
 - Node.js and npm
 - Postman CLI, or allow the pipeline to install it
+- `tar`, and outbound HTTPS access to GitHub releases so the pipeline can install the pinned `openapi-changes` binary
 - Jenkins Git and Pipeline plugins
 - PowerShell for Windows agents
 
@@ -222,7 +233,8 @@ The key in `POSTMAN_GOVERNANCE_GROUPS_JSON` must match `project.domain` from
 `.postman-ci/config.yaml`.
 
 PR Governance always prints a readable failure summary in the Jenkins console
-and archives the full `lint-results.json`.
+and archives `lint-results.json`, `lint-stderr.log`, `lint-summary.md`,
+`openapi-changes-summary.md`, and `openapi-changes.log`.
 
 When `.postman/resources.yaml` contains a workspace ID from a previous
 bootstrap, PR Governance lints the bundled spec with that workspace context:
@@ -231,7 +243,15 @@ the Governance rules available to that Postman workspace while still checking
 the pull request's local spec file. If the repo has not been bootstrapped yet,
 the PR check falls back to file-based Governance linting without a workspace ID.
 
-To add the same Governance summary to Bitbucket pull requests, set
+The same PR check also runs `openapi-changes summary --markdown --no-logo
+--no-color --with-lines` against the target branch spec by default. The tool exits
+non-zero when it detects breaking changes, so either a Postman Governance
+failure or an OpenAPI breaking change fails the Jenkins build and updates the
+same Bitbucket PR comment. The pipeline installs `openapi-changes` from a
+pinned GitHub release, verifies the release archive SHA-256 checksum, checks
+archive paths before extraction, and does not use the npm package postinstall.
+
+To add the same API Governance summary to Bitbucket pull requests, set
 `BITBUCKET_PR_COMMENT_AUTH_TYPE` and `BITBUCKET_PR_COMMENT_CREDENTIALS_ID`.
 The credential must have permission to write pull-request comments and tasks.
 For Bitbucket API tokens, store the token as a Jenkins Username with password

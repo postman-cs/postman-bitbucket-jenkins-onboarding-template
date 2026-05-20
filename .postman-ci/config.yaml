@@ -17,6 +17,10 @@ postman:
   resourcesPath: .postman/resources.yaml
   smokeFlowPath: ""
 
+governance:
+  breakingChangeMode: pr-native
+  prReviewMentionEmail: ""
+
 ci:
   installCommand: ""
   buildCommand: ""
