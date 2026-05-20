@@ -19,9 +19,9 @@ After the pipeline is configured, Jenkins can:
 7. Run the Smoke collection against the configured smoke environment.
 8. Optionally commit and push generated Postman artifacts back to Bitbucket.
 
-Generated Postman commits use a dedicated automation author. The pipeline skips
-Postman onboarding when the latest commit came from that automation author to
-avoid recursive generated commits.
+Generated Postman commits use a dedicated automation author. The same author
+values are used by the build-loop guard, so customers can customize the Jenkins
+environment values without disabling generated-commit detection.
 
 ## When It Runs
 
@@ -269,10 +269,11 @@ inspect the generated commit without pushing it.
 
 To prevent build loops, Jenkins checks the triggering commit once at the start
 of the build and skips the main onboarding stages when that commit is a
-generated artifact commit. The guard requires all of these to be true:
+generated artifact commit. The guard reads the same Jenkins environment values
+used for generated commits and requires all of these to be true:
 
-- commit subject is `chore: sync Postman artifacts and metadata`
-- commit author is `Postman CSE <help@postman.com>`
+- commit subject matches `POSTMAN_GENERATED_ARTIFACT_COMMIT_MESSAGE`, defaulting to `chore: sync Postman artifacts and metadata`
+- commit author matches `POSTMAN_CSE_AUTHOR <POSTMAN_CSE_AUTHOR_EMAIL>`, defaulting to `Postman CSE <help@postman.com>`
 - changed files are only under `.postman/` and `postman/`
 
 ## First Run Checklist

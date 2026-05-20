@@ -1,9 +1,15 @@
 import { execFileSync } from 'node:child_process';
 
-const expectedSubject = process.env.POSTMAN_GENERATED_ARTIFACT_COMMIT_MESSAGE
-  || 'chore: sync Postman artifacts and metadata';
-const expectedAuthorName = process.env.POSTMAN_CSE_AUTHOR || 'Postman CSE';
-const expectedAuthorEmail = process.env.POSTMAN_CSE_AUTHOR_EMAIL || 'help@postman.com';
+function envOrDefault(name, defaultValue) {
+  return String(process.env[name] ?? '').trim() || defaultValue;
+}
+
+const expectedSubject = envOrDefault(
+  'POSTMAN_GENERATED_ARTIFACT_COMMIT_MESSAGE',
+  'chore: sync Postman artifacts and metadata'
+);
+const expectedAuthorName = envOrDefault('POSTMAN_CSE_AUTHOR', 'Postman CSE');
+const expectedAuthorEmail = envOrDefault('POSTMAN_CSE_AUTHOR_EMAIL', 'help@postman.com');
 const explain = process.argv.includes('--explain');
 
 function git(args) {
