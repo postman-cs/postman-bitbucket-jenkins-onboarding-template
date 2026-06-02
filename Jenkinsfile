@@ -117,7 +117,7 @@ pipeline {
   }
 
   parameters {
-    choice(name: 'POSTMAN_ONBOARDING_MODE', choices: ['auto', 'bootstrap', 'update'], description: 'auto bootstraps when .postman/resources.yaml is missing and updates when it exists.')
+    choice(name: 'POSTMAN_ONBOARDING_MODE', choices: ['auto', 'bootstrap', 'update'], description: 'auto bootstraps when .postman/resources.yaml is missing or incomplete and updates when it has the required resource IDs.')
     choice(name: 'POSTMAN_REPO_WRITE_MODE', choices: ['commit-and-push', 'none', 'commit-only'], description: 'How repo-sync handles generated Postman artifacts. commit-and-push uses Jenkins Bitbucket credentials.')
     string(name: 'POSTMAN_PUSH_BRANCH', defaultValue: '', description: 'Optional branch override for generated Postman artifact pushes. Defaults to PR/source/current branch.')
     string(name: 'BITBUCKET_CREDENTIALS_ID', defaultValue: 'bit-bucket-app-password-template', description: 'Jenkins username/password credential for pushing generated Postman artifacts to Bitbucket.')

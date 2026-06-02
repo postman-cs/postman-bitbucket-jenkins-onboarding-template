@@ -1,7 +1,8 @@
-import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import YAML from 'yaml';
-import { loadConfig, powerShellQuote, resolveRepoPath, shellQuote } from './config.mjs';
+import { powerShellQuote, shellQuote } from './config.mjs';
+import {
+  missingResourceKeys,
+  resolvePostmanResourceValues
+} from './postman-resources.mjs';
 
 function parseArgs(argv) {
   const required = new Set();
@@ -32,56 +33,13 @@ function parseArgs(argv) {
   return { required, format };
 }
 
-function findValueByPathFragment(values, fragment) {
-  return Object.entries(values).find(([filePath]) => filePath.includes(fragment))?.[1] ?? '';
-}
-
-const config = loadConfig();
 const { required, format } = parseArgs(process.argv.slice(2));
-const resourcesPath = resolveRepoPath(config.postman.resourcesPath);
-const resources = existsSync(resourcesPath)
-  ? YAML.parse(await readFile(resourcesPath, 'utf8')) ?? {}
-  : {};
-const cloudResources = resources.cloudResources ?? {};
-const collections = cloudResources.collections ?? {};
-const environments = cloudResources.environments ?? {};
-const specs = cloudResources.specs ?? {};
-const environmentNames = (() => {
-  const rawValue = String(process.env.POSTMAN_CI_ENVIRONMENTS_JSON ?? '').trim();
-  if (!rawValue) {
-    return [];
-  }
+const { environmentNames, values } = await resolvePostmanResourceValues({
+  env: process.env,
+  warn: (message) => console.error(message)
+});
 
-  const parsed = JSON.parse(rawValue);
-  if (!Array.isArray(parsed)) {
-    throw new Error('POSTMAN_CI_ENVIRONMENTS_JSON must be a JSON array.');
-  }
-
-  return parsed.map((entry) => String(entry).trim()).filter(Boolean);
-})();
-
-const values = {
-  workspace: String(resources.workspace?.id ?? ''),
-  spec: String(
-    specs[`../${config.api.specPath}`] ??
-    specs[`../${config.api.bundledSpecPath}`] ??
-    Object.values(specs)[0] ??
-    ''
-  ),
-  baseline: String(findValueByPathFragment(collections, '[Baseline]')),
-  smoke: String(findValueByPathFragment(collections, '[Smoke]')),
-  contract: String(findValueByPathFragment(collections, '[Contract]')),
-  mock: String(cloudResources.mocks?.default ?? cloudResources.mockUrl ?? ''),
-  monitor: String(cloudResources.monitors?.smoke ?? cloudResources.monitorId ?? '')
-};
-
-for (const envName of environmentNames) {
-  values[envName.toLowerCase()] = String(
-    findValueByPathFragment(environments, `${envName}.postman_environment.json`)
-  );
-}
-
-const missing = [...required].filter((key) => !values[key]);
+const missing = missingResourceKeys(values, [...required]);
 if (missing.length > 0) {
   throw new Error(`Missing required Postman resource values: ${missing.join(', ')}`);
 }

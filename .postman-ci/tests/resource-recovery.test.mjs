@@ -1,0 +1,118 @@
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const ciRoot = path.resolve(testDir, '..');
+const onboardingModeScript = path.join(ciRoot, 'scripts/onboarding-mode.mjs');
+const resourceEnvScript = path.join(ciRoot, 'scripts/postman-resource-env.mjs');
+
+async function createFixture() {
+  return mkdtemp(path.join(os.tmpdir(), 'postman-ci-resources-'));
+}
+
+async function writeResources(cwd, content) {
+  await mkdir(path.join(cwd, '.postman'), { recursive: true });
+  await writeFile(path.join(cwd, '.postman/resources.yaml'), content, 'utf8');
+}
+
+function runNode(scriptPath, args, options = {}) {
+  return spawnSync(process.execPath, [scriptPath, ...args], {
+    cwd: options.cwd,
+    env: {
+      ...process.env,
+      ...options.env
+    },
+    encoding: 'utf8'
+  });
+}
+
+const completeResources = `
+workspace:
+  id: ws-123
+cloudResources:
+  specs:
+    ../api/openapi.yaml: spec-123
+  collections:
+    ../postman/collections/[Baseline] sample-api: baseline-123
+    ../postman/collections/[Smoke] sample-api: smoke-123
+    ../postman/collections/[Contract] sample-api: contract-123
+  environments:
+    ../postman/environments/TEST.postman_environment.json: test-env-123
+    ../postman/environments/STAGE.postman_environment.json: stage-env-123
+`;
+
+test('auto mode bootstraps when resources file is absent', async () => {
+  const cwd = await createFixture();
+  const result = runNode(onboardingModeScript, ['auto'], { cwd });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'bootstrap');
+});
+
+test('auto mode updates when resources file has the required update seed values', async () => {
+  const cwd = await createFixture();
+  await writeResources(cwd, completeResources);
+
+  const result = runNode(onboardingModeScript, ['auto'], { cwd });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'update');
+});
+
+test('auto mode bootstraps when resources file is missing spec mapping', async () => {
+  const cwd = await createFixture();
+  await writeResources(cwd, completeResources.replace(/  specs:\n    \.\.\/api\/openapi\.yaml: spec-123\n/, ''));
+
+  const result = runNode(onboardingModeScript, ['auto'], { cwd });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'bootstrap');
+  assert.match(result.stderr, /missing required Postman resource values: spec/i);
+});
+
+test('auto mode bootstraps when resources file is malformed', async () => {
+  const cwd = await createFixture();
+  await writeResources(cwd, 'workspace:\n  id: [broken\n');
+
+  const result = runNode(onboardingModeScript, ['auto'], { cwd });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'bootstrap');
+  assert.match(result.stderr, /unable to read Postman resources/i);
+});
+
+test('explicit update remains strict about mode selection', async () => {
+  const cwd = await createFixture();
+  await writeResources(cwd, completeResources.replace(/    \.\.\/postman\/collections\/\[Smoke\] sample-api: smoke-123\n/, ''));
+
+  const result = runNode(onboardingModeScript, ['update'], { cwd });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'update');
+});
+
+test('non-strict resource env tolerates malformed resources and emits empty values', async () => {
+  const cwd = await createFixture();
+  await writeResources(cwd, 'workspace:\n  id: [broken\n');
+
+  const result = runNode(resourceEnvScript, [], { cwd });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /unable to read Postman resources/i);
+  assert.match(result.stdout, /^POSTMAN_WORKSPACE_ID=''$/m);
+});
+
+test('strict resource env fails with missing required values', async () => {
+  const cwd = await createFixture();
+  await writeResources(cwd, completeResources.replace(/  specs:\n    \.\.\/api\/openapi\.yaml: spec-123\n/, ''));
+
+  const result = runNode(resourceEnvScript, ['--require=workspace,spec,baseline,smoke,contract'], { cwd });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Missing required Postman resource values: spec/);
+});

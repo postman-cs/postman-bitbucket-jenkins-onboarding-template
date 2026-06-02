@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Portable Postman onboarding tooling for Bitbucket and Jenkins.",
   "scripts": {
+    "test": "node --test tests/*.test.mjs",
     "validate:specs": "node scripts/validate-specs.mjs",
     "check:breaking": "node scripts/check-breaking.mjs"
   },
