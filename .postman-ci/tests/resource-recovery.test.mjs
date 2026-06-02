@@ -140,3 +140,19 @@ test('Jenkins repo-sync CLI receives configured environment names and runtime UR
   assert.match(jenkinsfile, /'--environments-json',\s*\$env:POSTMAN_CI_ENVIRONMENTS_JSON,/);
   assert.match(jenkinsfile, /'--env-runtime-urls-json',\s*\$env:POSTMAN_CI_RUNTIME_URLS_JSON,/);
 });
+
+test('Jenkins repo-sync CLI can link workspaces and sync system environments', async () => {
+  const jenkinsfile = await readFile(path.join(repoRoot, 'Jenkinsfile'), 'utf8');
+
+  assert.match(jenkinsfile, /booleanParam\(name: 'POSTMAN_WORKSPACE_LINK_ENABLED'/);
+  assert.match(jenkinsfile, /booleanParam\(name: 'POSTMAN_ENVIRONMENT_SYNC_ENABLED'/);
+  assert.match(jenkinsfile, /text\(name: 'POSTMAN_SYSTEM_ENV_MAP_JSON'/);
+  assert.match(jenkinsfile, /--repo-url\s+"\$BITBUCKET_HTTPS_REMOTE_URL"/);
+  assert.match(jenkinsfile, /--workspace-link-enabled\s+"\$POSTMAN_WORKSPACE_LINK_ENABLED"/);
+  assert.match(jenkinsfile, /--environment-sync-enabled\s+"\$POSTMAN_ENVIRONMENT_SYNC_ENABLED"/);
+  assert.match(jenkinsfile, /--system-env-map-json\s+"\$POSTMAN_SYSTEM_ENV_MAP_JSON"/);
+  assert.match(jenkinsfile, /'--repo-url',\s*\$env:BITBUCKET_HTTPS_REMOTE_URL,/);
+  assert.match(jenkinsfile, /'--workspace-link-enabled',\s*\$env:POSTMAN_WORKSPACE_LINK_ENABLED,/);
+  assert.match(jenkinsfile, /'--environment-sync-enabled',\s*\$env:POSTMAN_ENVIRONMENT_SYNC_ENABLED,/);
+  assert.match(jenkinsfile, /'--system-env-map-json',\s*\$env:POSTMAN_SYSTEM_ENV_MAP_JSON,/);
+});

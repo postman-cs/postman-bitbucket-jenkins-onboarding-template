@@ -215,6 +215,9 @@ that value.
 | `BITBUCKET_PR_CREATE_BLOCKING_TASK` | `true` | Creates or resolves a Bitbucket PR task for Governance failures |
 | `POSTMAN_RUNTIME_URLS_JSON` | `{"TEST":"http://localhost:3000","STAGE":"https://stage.example.com","PROD":"https://api.example.com"}` | Environment-to-base-URL mapping |
 | `POSTMAN_GOVERNANCE_GROUPS_JSON` | `{"sample-domain":"api-governance-group"}` | `project.domain` to Governance group mapping |
+| `POSTMAN_WORKSPACE_LINK_ENABLED` | `true` | Links the Postman workspace to the Bitbucket repository |
+| `POSTMAN_ENVIRONMENT_SYNC_ENABLED` | `false` | Associates Postman environments to system environments when `POSTMAN_SYSTEM_ENV_MAP_JSON` is configured |
+| `POSTMAN_SYSTEM_ENV_MAP_JSON` | `{}` | Environment-to-system-environment-ID mapping used by environment sync |
 | `POSTMAN_CONTRACT_ENVIRONMENT` | `TEST` | Environment used for local Contract collection runs |
 | `POSTMAN_SMOKE_ENVIRONMENT` | `STAGE` | Environment used for Smoke collection runs |
 | `RUN_STAGE_SMOKE` | `false` | Enables or disables the Smoke collection run |
@@ -240,6 +243,18 @@ Example `POSTMAN_GOVERNANCE_GROUPS_JSON`:
 
 The key in `POSTMAN_GOVERNANCE_GROUPS_JSON` must match `project.domain` from
 `.postman-ci/config.yaml`.
+
+`POSTMAN_WORKSPACE_LINK_ENABLED` should normally stay enabled so the Postman
+workspace is connected to the Bitbucket repository. `POSTMAN_ENVIRONMENT_SYNC_ENABLED`
+requires `POSTMAN_SYSTEM_ENV_MAP_JSON`, for example:
+
+```json
+{
+  "TEST": "system-env-id-for-test",
+  "STAGE": "system-env-id-for-stage",
+  "PROD": "system-env-id-for-prod"
+}
+```
 
 PR Governance always prints a readable failure summary in the Jenkins console
 and archives `lint-results.json`, `lint-stderr.log`, `lint-summary.md`,

@@ -126,6 +126,9 @@ pipeline {
     booleanParam(name: 'BITBUCKET_PR_CREATE_BLOCKING_TASK', defaultValue: true, description: 'Create or resolve a Bitbucket PR task for Governance failures. Requires Bitbucket merge checks to block on open tasks.')
     text(name: 'POSTMAN_RUNTIME_URLS_JSON', defaultValue: '{"TEST":"http://localhost:3000","STAGE":"https://stage.example.com","PROD":"https://api.example.com"}', description: 'JSON object mapping Postman environment names to base URLs.')
     text(name: 'POSTMAN_GOVERNANCE_GROUPS_JSON', defaultValue: '{"sample-domain":"api-governance-group"}', description: 'JSON object mapping project.domain values to Postman Governance group names.')
+    booleanParam(name: 'POSTMAN_WORKSPACE_LINK_ENABLED', defaultValue: true, description: 'Link the Postman workspace to the Bitbucket repository.')
+    booleanParam(name: 'POSTMAN_ENVIRONMENT_SYNC_ENABLED', defaultValue: false, description: 'Associate Postman environments to system environments when POSTMAN_SYSTEM_ENV_MAP_JSON is configured.')
+    text(name: 'POSTMAN_SYSTEM_ENV_MAP_JSON', defaultValue: '{}', description: 'JSON object mapping Postman environment names to Postman system environment IDs.')
     string(name: 'POSTMAN_CONTRACT_ENVIRONMENT', defaultValue: 'TEST', description: 'Environment name used for local Contract collection runs. Must exist in POSTMAN_RUNTIME_URLS_JSON.')
     string(name: 'POSTMAN_SMOKE_ENVIRONMENT', defaultValue: 'STAGE', description: 'Environment name used for Smoke collection runs. Must exist in POSTMAN_RUNTIME_URLS_JSON.')
     booleanParam(name: 'RUN_STAGE_SMOKE', defaultValue: false, description: 'Run the Smoke collection against POSTMAN_SMOKE_ENVIRONMENT.')
@@ -547,10 +550,12 @@ REPO_SYNC_ARGS=(
   --spec-sync-mode update
   --environments-json "$POSTMAN_CI_ENVIRONMENTS_JSON"
   --env-runtime-urls-json "$POSTMAN_CI_RUNTIME_URLS_JSON"
+  --system-env-map-json "$POSTMAN_SYSTEM_ENV_MAP_JSON"
   --generate-ci-workflow false
   --monitor-type cli
-  --workspace-link-enabled false
-  --environment-sync-enabled false
+  --repo-url "$BITBUCKET_HTTPS_REMOTE_URL"
+  --workspace-link-enabled "$POSTMAN_WORKSPACE_LINK_ENABLED"
+  --environment-sync-enabled "$POSTMAN_ENVIRONMENT_SYNC_ENABLED"
   --repo-write-mode "$REPO_SYNC_WRITE_MODE"
   --repository "$BITBUCKET_REPOSITORY_SLUG"
   --postman-api-key "$POSTMAN_API_KEY"
@@ -700,10 +705,12 @@ $RepoSyncArgs = @(
   '--spec-sync-mode', 'update',
   '--environments-json', $env:POSTMAN_CI_ENVIRONMENTS_JSON,
   '--env-runtime-urls-json', $env:POSTMAN_CI_RUNTIME_URLS_JSON,
+  '--system-env-map-json', $env:POSTMAN_SYSTEM_ENV_MAP_JSON,
   '--generate-ci-workflow', 'false',
   '--monitor-type', 'cli',
-  '--workspace-link-enabled', 'false',
-  '--environment-sync-enabled', 'false',
+  '--repo-url', $env:BITBUCKET_HTTPS_REMOTE_URL,
+  '--workspace-link-enabled', $env:POSTMAN_WORKSPACE_LINK_ENABLED,
+  '--environment-sync-enabled', $env:POSTMAN_ENVIRONMENT_SYNC_ENABLED,
   '--repo-write-mode', $RepoSyncWriteMode,
   '--repository', $env:BITBUCKET_REPOSITORY_SLUG,
   '--postman-api-key', $env:POSTMAN_API_KEY,
