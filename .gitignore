@@ -16,6 +16,7 @@ TEST*.xml
 Thumbs.db
 
 # Jenkins/Postman generated files
+00-baseline.yaml
 .jenkins-tools/
 .debug/
 bitbucket-repo.env
