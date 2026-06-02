@@ -172,6 +172,22 @@ test('Jenkins repo-sync CLI can link workspaces and sync system environments', a
   );
 });
 
+test('Jenkins push stage diagnoses Bitbucket credential access before push', async () => {
+  const jenkinsfile = await readFile(path.join(repoRoot, 'Jenkinsfile'), 'utf8');
+
+  assert.equal(jenkinsfile.match(/Bitbucket push diagnostics/g)?.length, 2);
+  assert.match(jenkinsfile, /credential ID: \$\{BITBUCKET_CREDENTIALS_ID:-unknown\}/);
+  assert.match(jenkinsfile, /credential username present:/);
+  assert.match(jenkinsfile, /credential username is API token auth user:/);
+  assert.match(jenkinsfile, /credential password present:/);
+  assert.match(jenkinsfile, /repository slug: \$BITBUCKET_REPOSITORY_SLUG/);
+  assert.match(jenkinsfile, /https remote host:/);
+  assert.match(jenkinsfile, /authenticated ls-remote heads: success/);
+  assert.match(jenkinsfile, /authenticated ls-remote heads: failed/);
+  assert.match(jenkinsfile, /\$env:BITBUCKET_CREDENTIALS_ID = /);
+  assert.match(jenkinsfile, /credential username is API token auth user: \{0\}/);
+});
+
 test('runtime env resolves system environment aliases to configured names', () => {
   const result = runNode(resolveRuntimeEnvScript, [], {
     cwd: repoRoot,

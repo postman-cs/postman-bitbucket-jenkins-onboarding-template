@@ -952,9 +952,11 @@ git check-ref-format --branch "$PUSH_BRANCH" >/dev/null
 
 ORIGINAL_ORIGIN_URL="$(git remote get-url origin)"
 ASKPASS_SCRIPT="$PWD/.git/bitbucket-askpass.sh"
+BITBUCKET_LS_REMOTE_HEADS="$PWD/.git/bitbucket-ls-remote-heads.txt"
+BITBUCKET_LS_REMOTE_STDERR="$PWD/.git/bitbucket-ls-remote.stderr"
 restore_origin() {
   git remote set-url origin "$ORIGINAL_ORIGIN_URL" >/dev/null 2>&1 || true
-  rm -f "$ASKPASS_SCRIPT"
+  rm -f "$ASKPASS_SCRIPT" "$BITBUCKET_LS_REMOTE_HEADS" "$BITBUCKET_LS_REMOTE_STDERR"
 }
 trap restore_origin EXIT
 
@@ -969,6 +971,28 @@ ASKPASS
 chmod 700 "$ASKPASS_SCRIPT"
 
 git remote set-url origin "$BITBUCKET_HTTPS_REMOTE_URL"
+
+HTTPS_REMOTE_HOST="$(node -e "try { console.log(new URL(process.argv[1]).host) } catch { console.log('unparseable') }" "$BITBUCKET_HTTPS_REMOTE_URL")"
+echo "Bitbucket push diagnostics"
+echo "credential ID: ${BITBUCKET_CREDENTIALS_ID:-unknown}"
+echo "credential username present: $([ -n "${BITBUCKET_USERNAME:-}" ] && echo true || echo false)"
+echo "credential username is API token auth user: $([ "${BITBUCKET_USERNAME:-}" = "x-bitbucket-api-token-auth" ] && echo true || echo false)"
+echo "credential password present: $([ -n "${BITBUCKET_APP_PASSWORD:-}" ] && echo true || echo false)"
+echo "repository slug: $BITBUCKET_REPOSITORY_SLUG"
+echo "push branch: $PUSH_BRANCH"
+echo "https remote host: $HTTPS_REMOTE_HOST"
+
+if GIT_TERMINAL_PROMPT=0 GIT_ASKPASS="$ASKPASS_SCRIPT" \
+  git ls-remote --heads origin > "$BITBUCKET_LS_REMOTE_HEADS" 2> "$BITBUCKET_LS_REMOTE_STDERR"; then
+  HEAD_COUNT="$(wc -l < "$BITBUCKET_LS_REMOTE_HEADS" | tr -d '[:space:]')"
+  echo "authenticated ls-remote heads: success (${HEAD_COUNT:-0} heads visible)"
+else
+  LS_REMOTE_STATUS="$?"
+  echo "authenticated ls-remote heads: failed (exit $LS_REMOTE_STATUS)" >&2
+  sed -E 's#https://[^/@]+:[^/@]+@#https://[REDACTED]@#g' "$BITBUCKET_LS_REMOTE_STDERR" >&2 || true
+  exit "$LS_REMOTE_STATUS"
+fi
+
 GIT_TERMINAL_PROMPT=0 GIT_ASKPASS="$ASKPASS_SCRIPT" \
   git push origin "${POSTMAN_REPO_SYNC_COMMIT_SHA}:refs/heads/${PUSH_BRANCH}"
 ''',
@@ -1048,6 +1072,8 @@ $OriginalOriginUrl = git remote get-url origin
 Assert-NativeSuccess
 $AskPassPs1 = Join-Path (Get-Location).Path '.git\\bitbucket-askpass.ps1'
 $AskPassCmd = Join-Path (Get-Location).Path '.git\\bitbucket-askpass.cmd'
+$LsRemoteHeads = Join-Path (Get-Location).Path '.git\\bitbucket-ls-remote-heads.txt'
+$LsRemoteStderr = Join-Path (Get-Location).Path '.git\\bitbucket-ls-remote.stderr'
 
 try {
   @'
@@ -1067,14 +1093,49 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0bitbucket-askpass.
   git remote set-url origin $env:BITBUCKET_HTTPS_REMOTE_URL
   Assert-NativeSuccess
 
+  if ([string]::IsNullOrWhiteSpace($env:BITBUCKET_CREDENTIALS_ID)) {
+    $env:BITBUCKET_CREDENTIALS_ID = 'unknown'
+  }
+  try {
+    $HttpsRemoteHost = ([Uri]$env:BITBUCKET_HTTPS_REMOTE_URL).Host
+  } catch {
+    $HttpsRemoteHost = 'unparseable'
+  }
+
+  Write-Host 'Bitbucket push diagnostics'
+  Write-Host ("credential ID: {0}" -f $env:BITBUCKET_CREDENTIALS_ID)
+  Write-Host ("credential username present: {0}" -f (-not [string]::IsNullOrWhiteSpace($env:BITBUCKET_USERNAME)))
+  Write-Host ("credential username is API token auth user: {0}" -f ($env:BITBUCKET_USERNAME -eq 'x-bitbucket-api-token-auth'))
+  Write-Host ("credential password present: {0}" -f (-not [string]::IsNullOrWhiteSpace($env:BITBUCKET_APP_PASSWORD)))
+  Write-Host ("repository slug: {0}" -f $env:BITBUCKET_REPOSITORY_SLUG)
+  Write-Host ("push branch: {0}" -f $PushBranch)
+  Write-Host ("https remote host: {0}" -f $HttpsRemoteHost)
+
   $env:GIT_TERMINAL_PROMPT = '0'
   $env:GIT_ASKPASS = $AskPassCmd
+  git ls-remote --heads origin 1> $LsRemoteHeads 2> $LsRemoteStderr
+  if ($LASTEXITCODE -eq 0) {
+    $HeadCount = @(Get-Content -ErrorAction SilentlyContinue -Path $LsRemoteHeads).Count
+    Write-Host ("authenticated ls-remote heads: success ({0} heads visible)" -f $HeadCount)
+  } else {
+    $LsRemoteStatus = $LASTEXITCODE
+    Write-Host ("authenticated ls-remote heads: failed (exit {0})" -f $LsRemoteStatus)
+    if (Test-Path -LiteralPath $LsRemoteStderr) {
+      Get-Content -Path $LsRemoteStderr | ForEach-Object {
+        $_ -replace 'https://[^/@]+:[^/@]+@', 'https://[REDACTED]@'
+      } | Write-Host
+    }
+    exit $LsRemoteStatus
+  }
+
   $RefSpec = "$($env:POSTMAN_REPO_SYNC_COMMIT_SHA):refs/heads/$PushBranch"
   git push origin $RefSpec
   Assert-NativeSuccess
 } finally {
   git remote set-url origin $OriginalOriginUrl | Out-Null
-  Remove-Item -Force -ErrorAction SilentlyContinue $AskPassPs1, $AskPassCmd
+  @($AskPassPs1, $AskPassCmd, $LsRemoteHeads, $LsRemoteStderr) |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+    ForEach-Object { Remove-Item -Force -ErrorAction SilentlyContinue $_ }
 }
 '''
             )
