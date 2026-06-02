@@ -545,6 +545,8 @@ REPO_SYNC_ARGS=(
   --contract-collection-id "$POSTMAN_BOOTSTRAP_CONTRACT_COLLECTION_ID"
   --collection-sync-mode refresh
   --spec-sync-mode update
+  --environments-json "$POSTMAN_CI_ENVIRONMENTS_JSON"
+  --env-runtime-urls-json "$POSTMAN_CI_RUNTIME_URLS_JSON"
   --generate-ci-workflow false
   --monitor-type cli
   --workspace-link-enabled false
@@ -696,6 +698,8 @@ $RepoSyncArgs = @(
   '--contract-collection-id', $env:POSTMAN_BOOTSTRAP_CONTRACT_COLLECTION_ID,
   '--collection-sync-mode', 'refresh',
   '--spec-sync-mode', 'update',
+  '--environments-json', $env:POSTMAN_CI_ENVIRONMENTS_JSON,
+  '--env-runtime-urls-json', $env:POSTMAN_CI_RUNTIME_URLS_JSON,
   '--generate-ci-workflow', 'false',
   '--monitor-type', 'cli',
   '--workspace-link-enabled', 'false',

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const ciRoot = path.resolve(testDir, '..');
+const repoRoot = path.resolve(ciRoot, '..');
 const onboardingModeScript = path.join(ciRoot, 'scripts/onboarding-mode.mjs');
 const resourceEnvScript = path.join(ciRoot, 'scripts/postman-resource-env.mjs');
 
@@ -107,6 +108,20 @@ test('non-strict resource env tolerates malformed resources and emits empty valu
   assert.match(result.stdout, /^POSTMAN_WORKSPACE_ID=''$/m);
 });
 
+test('strict resource env resolves required environment values without exported environment list', async () => {
+  const cwd = await createFixture();
+  await writeResources(cwd, completeResources);
+
+  const result = runNode(resourceEnvScript, ['--require=contract,smoke,test,stage'], {
+    cwd,
+    env: { POSTMAN_CI_ENVIRONMENTS_JSON: '' }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^POSTMAN_TEST_ENVIRONMENT_ID='test-env-123'$/m);
+  assert.match(result.stdout, /^POSTMAN_STAGE_ENVIRONMENT_ID='stage-env-123'$/m);
+});
+
 test('strict resource env fails with missing required values', async () => {
   const cwd = await createFixture();
   await writeResources(cwd, completeResources.replace(/  specs:\n    \.\.\/api\/openapi\.yaml: spec-123\n/, ''));
@@ -115,4 +130,13 @@ test('strict resource env fails with missing required values', async () => {
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Missing required Postman resource values: spec/);
+});
+
+test('Jenkins repo-sync CLI receives configured environment names and runtime URLs', async () => {
+  const jenkinsfile = await readFile(path.join(repoRoot, 'Jenkinsfile'), 'utf8');
+
+  assert.match(jenkinsfile, /--environments-json\s+"\$POSTMAN_CI_ENVIRONMENTS_JSON"/);
+  assert.match(jenkinsfile, /--env-runtime-urls-json\s+"\$POSTMAN_CI_RUNTIME_URLS_JSON"/);
+  assert.match(jenkinsfile, /'--environments-json',\s*\$env:POSTMAN_CI_ENVIRONMENTS_JSON,/);
+  assert.match(jenkinsfile, /'--env-runtime-urls-json',\s*\$env:POSTMAN_CI_RUNTIME_URLS_JSON,/);
 });

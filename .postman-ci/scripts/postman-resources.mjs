@@ -4,9 +4,13 @@ import YAML from 'yaml';
 import { loadConfig, resolveRepoPath } from './config.mjs';
 
 export const UPDATE_READY_REQUIRED_KEYS = ['workspace', 'spec', 'baseline', 'smoke', 'contract'];
+const STATIC_RESOURCE_KEYS = new Set([...UPDATE_READY_REQUIRED_KEYS, 'mock', 'monitor']);
 
 function findValueByPathFragment(values, fragment) {
-  return Object.entries(values).find(([filePath]) => filePath.includes(fragment))?.[1] ?? '';
+  const normalizedFragment = String(fragment).toLowerCase();
+  return Object.entries(values).find(([filePath]) => {
+    return String(filePath).toLowerCase().includes(normalizedFragment);
+  })?.[1] ?? '';
 }
 
 function parseEnvironmentNames(env) {
@@ -23,12 +27,37 @@ function parseEnvironmentNames(env) {
   return parsed.map((entry) => String(entry).trim()).filter(Boolean);
 }
 
+function environmentNamesFromKeys(keys) {
+  return keys
+    .map((key) => String(key).trim().toLowerCase())
+    .filter((key) => key && !STATIC_RESOURCE_KEYS.has(key))
+    .map((key) => key.toUpperCase());
+}
+
+function uniqueEnvironmentNames(names) {
+  const seen = new Set();
+  const result = [];
+
+  for (const name of names) {
+    const normalizedName = String(name).trim().toUpperCase();
+    const lookupKey = normalizedName.toLowerCase();
+    if (!normalizedName || seen.has(lookupKey)) {
+      continue;
+    }
+    seen.add(lookupKey);
+    result.push(normalizedName);
+  }
+
+  return result;
+}
+
 export function missingResourceKeys(values, requiredKeys) {
   return requiredKeys.filter((key) => !values[key]);
 }
 
 export async function resolvePostmanResourceValues({
   env = process.env,
+  environmentKeys = [],
   includeEnvironmentValues = true,
   warn = () => {}
 } = {}) {
@@ -54,7 +83,9 @@ export async function resolvePostmanResourceValues({
   const collections = cloudResources.collections ?? {};
   const environments = cloudResources.environments ?? {};
   const specs = cloudResources.specs ?? {};
-  const environmentNames = includeEnvironmentValues ? parseEnvironmentNames(env) : [];
+  const environmentNames = includeEnvironmentValues
+    ? uniqueEnvironmentNames([...parseEnvironmentNames(env), ...environmentNamesFromKeys(environmentKeys)])
+    : [];
 
   const values = {
     workspace: String(resources.workspace?.id ?? ''),

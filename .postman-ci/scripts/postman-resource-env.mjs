@@ -36,6 +36,7 @@ function parseArgs(argv) {
 const { required, format } = parseArgs(process.argv.slice(2));
 const { environmentNames, values } = await resolvePostmanResourceValues({
   env: process.env,
+  environmentKeys: [...required],
   warn: (message) => console.error(message)
 });
 
