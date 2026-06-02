@@ -55,6 +55,10 @@ export function missingResourceKeys(values, requiredKeys) {
   return requiredKeys.filter((key) => !values[key]);
 }
 
+function resourceKeys(values) {
+  return Object.keys(values ?? {});
+}
+
 export async function resolvePostmanResourceValues({
   env = process.env,
   environmentKeys = [],
@@ -110,8 +114,14 @@ export async function resolvePostmanResourceValues({
 
   return {
     resourcesPath,
+    resourcesDisplayPath: config.postman.resourcesPath,
     resourcesExist,
     environmentNames,
+    availableResources: {
+      specs: resourceKeys(specs),
+      collections: resourceKeys(collections),
+      environments: resourceKeys(environments)
+    },
     values
   };
 }

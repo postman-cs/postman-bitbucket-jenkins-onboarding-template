@@ -12,6 +12,7 @@ const repoRoot = path.resolve(ciRoot, '..');
 const onboardingModeScript = path.join(ciRoot, 'scripts/onboarding-mode.mjs');
 const resourceEnvScript = path.join(ciRoot, 'scripts/postman-resource-env.mjs');
 const resolveRuntimeEnvScript = path.join(ciRoot, 'scripts/resolve-runtime-env.mjs');
+const repoSyncDiagnosticsScript = path.join(ciRoot, 'scripts/report-repo-sync-diagnostics.mjs');
 
 async function createFixture() {
   return mkdtemp(path.join(os.tmpdir(), 'postman-ci-resources-'));
@@ -20,6 +21,10 @@ async function createFixture() {
 async function writeResources(cwd, content) {
   await mkdir(path.join(cwd, '.postman'), { recursive: true });
   await writeFile(path.join(cwd, '.postman/resources.yaml'), content, 'utf8');
+}
+
+async function writeJson(cwd, filePath, content) {
+  await writeFile(path.join(cwd, filePath), JSON.stringify(content, null, 2), 'utf8');
 }
 
 function runNode(scriptPath, args, options = {}) {
@@ -131,6 +136,11 @@ test('strict resource env fails with missing required values', async () => {
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Missing required Postman resource values: spec/);
+  assert.match(result.stderr, /Postman resource diagnostics/);
+  assert.match(result.stderr, /resources path: \.postman\/resources\.yaml/);
+  assert.match(result.stderr, /resources file exists: true/);
+  assert.match(result.stderr, /available collections: .*Baseline.*Smoke.*Contract/);
+  assert.match(result.stderr, /available environments: .*TEST\.postman_environment\.json.*STAGE\.postman_environment\.json/);
 });
 
 test('Jenkins repo-sync CLI receives configured environment names and runtime URLs', async () => {
@@ -156,6 +166,10 @@ test('Jenkins repo-sync CLI can link workspaces and sync system environments', a
   assert.match(jenkinsfile, /'--workspace-link-enabled',\s*\$env:POSTMAN_WORKSPACE_LINK_ENABLED,/);
   assert.match(jenkinsfile, /'--environment-sync-enabled',\s*\$env:POSTMAN_ENVIRONMENT_SYNC_ENABLED,/);
   assert.match(jenkinsfile, /'--system-env-map-json',\s*\$env:POSTMAN_CI_SYSTEM_ENV_MAP_JSON,/);
+  assert.equal(
+    jenkinsfile.match(/node \.postman-ci\/scripts\/report-repo-sync-diagnostics\.mjs postman-repo-sync-result\.json/g)?.length,
+    2
+  );
 });
 
 test('runtime env resolves system environment aliases to configured names', () => {
@@ -172,6 +186,13 @@ test('runtime env resolves system environment aliases to configured names', () =
     result.stdout,
     /^POSTMAN_CI_SYSTEM_ENV_MAP_JSON='\{"TEST":"test-id","STAGE":"stage-id","PROD":"prod-id"\}'$/m
   );
+  assert.match(result.stderr, /Postman runtime configuration/);
+  assert.match(result.stderr, /environments: TEST, STAGE, PROD/);
+  assert.match(result.stderr, /contract environment: TEST/);
+  assert.match(result.stderr, /smoke environment: STAGE/);
+  assert.match(result.stderr, /discovered system environments: testing, staging, production/);
+  assert.match(result.stderr, /discovered system environment count: 3/);
+  assert.match(result.stderr, /system environment mappings: TEST=configured, STAGE=configured, PROD=configured/);
 });
 
 test('runtime env prefers exact system environment map keys over aliases', () => {
@@ -186,4 +207,40 @@ test('runtime env prefers exact system environment map keys over aliases', () =>
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^POSTMAN_CI_SYSTEM_ENV_MAP_JSON='\{"TEST":"exact-id"\}'$/m);
+});
+
+test('repo-sync diagnostics explain skipped integration statuses', async () => {
+  const cwd = await createFixture();
+  await writeJson(cwd, 'postman-repo-sync-result.json', {
+    'workspace-link-status': 'skipped',
+    'environment-sync-status': 'skipped',
+    'environment-uids-json': '{"TEST":"test-env-123","STAGE":"stage-env-123"}',
+    'repo-sync-summary-json': '{"commitSha":"abc123","environmentCount":2,"pushed":false}',
+    'commit-sha': 'abc123',
+    'mock-url': 'https://example.mock.pstmn.io',
+    'monitor-id': ''
+  });
+
+  const result = runNode(repoSyncDiagnosticsScript, ['postman-repo-sync-result.json'], {
+    cwd,
+    env: {
+      POSTMAN_WORKSPACE_LINK_ENABLED: 'false',
+      POSTMAN_ENVIRONMENT_SYNC_ENABLED: 'true',
+      POSTMAN_CI_SYSTEM_ENV_MAP_JSON: '{}',
+      POSTMAN_REPO_WRITE_MODE: 'commit-and-push'
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Postman repo-sync diagnostics/);
+  assert.match(result.stdout, /workspace-link-status: skipped/);
+  assert.match(result.stdout, /workspace link skipped because POSTMAN_WORKSPACE_LINK_ENABLED=false/);
+  assert.match(result.stdout, /environment-sync-status: skipped/);
+  assert.match(result.stdout, /environment sync skipped because POSTMAN_CI_SYSTEM_ENV_MAP_JSON has no mappings/);
+  assert.match(result.stdout, /environment count: 2/);
+  assert.match(result.stdout, /system environment mapping count: 0/);
+  assert.match(result.stdout, /system environment mappings: \(none\)/);
+  assert.match(result.stdout, /mock URL: present/);
+  assert.match(result.stdout, /monitor ID: missing/);
+  assert.doesNotMatch(result.stdout, /example\.mock\.pstmn\.io/);
 });

@@ -128,6 +128,26 @@ function resolveSystemEnvironmentMap(runtimeUrls, systemEnvMap) {
   return resolved;
 }
 
+function formatList(values) {
+  return values.length > 0 ? values.join(', ') : '(none)';
+}
+
+function writeRuntimeDiagnostics({ runtimeUrls, rawSystemEnvMap, systemEnvMap, contractEnvironment, smokeEnvironment }) {
+  const runtimeEnvNames = Object.keys(runtimeUrls);
+  const rawSystemEnvNames = Object.keys(rawSystemEnvMap);
+  const mappingStatuses = runtimeEnvNames.map((envName) => {
+    return `${envName}=${systemEnvMap[envName] ? 'configured' : 'missing'}`;
+  });
+
+  console.error('Postman runtime configuration');
+  console.error(`environments: ${formatList(runtimeEnvNames)}`);
+  console.error(`contract environment: ${contractEnvironment}`);
+  console.error(`smoke environment: ${smokeEnvironment}`);
+  console.error(`discovered system environments: ${formatList(rawSystemEnvNames)}`);
+  console.error(`discovered system environment count: ${rawSystemEnvNames.length}`);
+  console.error(`system environment mappings: ${formatList(mappingStatuses)}`);
+}
+
 function requireRuntimeEnvironment(runtimeUrls, requestedName, label) {
   const normalizedName = String(requestedName ?? '').trim();
   if (!normalizedName) {
@@ -159,9 +179,10 @@ const runtimeUrls = parseJsonObject('POSTMAN_RUNTIME_URLS_JSON');
 for (const envName of Object.keys(runtimeUrls)) {
   validateEnvironmentName(envName);
 }
+const rawSystemEnvMap = parseOptionalJsonObject('POSTMAN_SYSTEM_ENV_MAP_JSON');
 const systemEnvMap = resolveSystemEnvironmentMap(
   runtimeUrls,
-  parseOptionalJsonObject('POSTMAN_SYSTEM_ENV_MAP_JSON')
+  rawSystemEnvMap
 );
 const governanceGroups = parseJsonObject('POSTMAN_GOVERNANCE_GROUPS_JSON');
 const domain = String(config.project.domain ?? '').trim();
@@ -192,6 +213,14 @@ const outputValues = {
   POSTMAN_CI_CONTRACT_ENVIRONMENT_NAME: contractEnvironment,
   POSTMAN_CI_SMOKE_ENVIRONMENT_NAME: smokeEnvironment
 };
+
+writeRuntimeDiagnostics({
+  runtimeUrls,
+  rawSystemEnvMap,
+  systemEnvMap,
+  contractEnvironment,
+  smokeEnvironment
+});
 
 for (const [name, value] of Object.entries(outputValues)) {
   if (format === 'ps1') {

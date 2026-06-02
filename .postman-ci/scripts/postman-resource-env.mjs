@@ -33,8 +33,35 @@ function parseArgs(argv) {
   return { required, format };
 }
 
+function formatList(values) {
+  return values.length > 0 ? values.join(', ') : '(none)';
+}
+
+function writeResourceDiagnostics({
+  availableResources,
+  missing,
+  required,
+  resourcesDisplayPath,
+  resourcesExist
+}) {
+  console.error('Postman resource diagnostics');
+  console.error(`resources path: ${resourcesDisplayPath}`);
+  console.error(`resources file exists: ${resourcesExist}`);
+  console.error(`required values: ${formatList(required)}`);
+  console.error(`missing values: ${formatList(missing)}`);
+  console.error(`available specs: ${formatList(availableResources.specs)}`);
+  console.error(`available collections: ${formatList(availableResources.collections)}`);
+  console.error(`available environments: ${formatList(availableResources.environments)}`);
+}
+
 const { required, format } = parseArgs(process.argv.slice(2));
-const { environmentNames, values } = await resolvePostmanResourceValues({
+const {
+  availableResources,
+  environmentNames,
+  resourcesDisplayPath,
+  resourcesExist,
+  values
+} = await resolvePostmanResourceValues({
   env: process.env,
   environmentKeys: [...required],
   warn: (message) => console.error(message)
@@ -42,6 +69,13 @@ const { environmentNames, values } = await resolvePostmanResourceValues({
 
 const missing = missingResourceKeys(values, [...required]);
 if (missing.length > 0) {
+  writeResourceDiagnostics({
+    availableResources,
+    missing,
+    required: [...required],
+    resourcesDisplayPath,
+    resourcesExist
+  });
   throw new Error(`Missing required Postman resource values: ${missing.join(', ')}`);
 }
 

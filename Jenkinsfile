@@ -567,6 +567,7 @@ REPO_SYNC_ARGS=(
 )
 
 node "$POSTMAN_REPO_SYNC" "${REPO_SYNC_ARGS[@]}"
+node .postman-ci/scripts/report-repo-sync-diagnostics.mjs postman-repo-sync-result.json
 CONTRACT_ENV_KEY="$(printf '%s' "$POSTMAN_CI_CONTRACT_ENVIRONMENT_NAME" | tr '[:upper:]' '[:lower:]')"
 SMOKE_ENV_KEY="$(printf '%s' "$POSTMAN_CI_SMOKE_ENVIRONMENT_NAME" | tr '[:upper:]' '[:lower:]')"
 export POSTMAN_CI_ENVIRONMENTS_JSON="$POSTMAN_CI_ENVIRONMENTS_JSON"
@@ -722,6 +723,8 @@ $RepoSyncArgs = @(
 )
 
 node $env:POSTMAN_REPO_SYNC @RepoSyncArgs
+Assert-NativeSuccess
+node .postman-ci/scripts/report-repo-sync-diagnostics.mjs postman-repo-sync-result.json
 Assert-NativeSuccess
 $ContractEnvKey = $env:POSTMAN_CI_CONTRACT_ENVIRONMENT_NAME.ToLowerInvariant()
 $SmokeEnvKey = $env:POSTMAN_CI_SMOKE_ENVIRONMENT_NAME.ToLowerInvariant()
