@@ -562,6 +562,7 @@ REPO_SYNC_ARGS=(
 node "$POSTMAN_REPO_SYNC" "${REPO_SYNC_ARGS[@]}"
 CONTRACT_ENV_KEY="$(printf '%s' "$POSTMAN_CI_CONTRACT_ENVIRONMENT_NAME" | tr '[:upper:]' '[:lower:]')"
 SMOKE_ENV_KEY="$(printf '%s' "$POSTMAN_CI_SMOKE_ENVIRONMENT_NAME" | tr '[:upper:]' '[:lower:]')"
+export POSTMAN_CI_ENVIRONMENTS_JSON="$POSTMAN_CI_ENVIRONMENTS_JSON"
 node .postman-ci/scripts/postman-resource-env.mjs --require="contract,smoke,$CONTRACT_ENV_KEY,$SMOKE_ENV_KEY" > postman-resources.env
 ''',
               '''
