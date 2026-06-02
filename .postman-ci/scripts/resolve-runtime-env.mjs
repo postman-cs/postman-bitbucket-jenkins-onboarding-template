@@ -44,6 +44,30 @@ function parseJsonObject(name) {
   );
 }
 
+function parseOptionalJsonObject(name) {
+  const rawValue = String(process.env[name] ?? '').trim();
+  if (!rawValue) {
+    return {};
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(rawValue);
+  } catch (error) {
+    throw new Error(`${name} must be valid JSON: ${error.message}`);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${name} must be a JSON object.`);
+  }
+
+  return Object.fromEntries(
+    Object.entries(parsed)
+      .map(([key, value]) => [String(key).trim(), String(value ?? '').trim()])
+      .filter(([key, value]) => key && value)
+  );
+}
+
 function findKeyCaseInsensitive(values, requestedKey) {
   const exactKey = Object.keys(values).find((key) => key === requestedKey);
   if (exactKey) {
@@ -53,6 +77,55 @@ function findKeyCaseInsensitive(values, requestedKey) {
   return Object.keys(values).find(
     (key) => key.toLowerCase() === requestedKey.toLowerCase()
   );
+}
+
+function canonicalLookupKey(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function systemEnvironmentAliases(envName) {
+  const aliases = new Map([
+    ['dev', ['dev', 'development']],
+    ['test', ['test', 'testing', 'qa', 'qualityassurance']],
+    ['stage', ['stage', 'staging', 'preprod', 'preproduction']],
+    ['uat', ['uat', 'useracceptance']],
+    ['prod', ['prod', 'production', 'live']]
+  ]);
+
+  const canonical = canonicalLookupKey(envName);
+  const matchedAliases = aliases.get(canonical) ?? [];
+  return [envName, canonical, ...matchedAliases];
+}
+
+function resolveSystemEnvironmentMap(runtimeUrls, systemEnvMap) {
+  const resolved = {};
+  const entries = Object.entries(systemEnvMap);
+  const byCanonicalKey = new Map(
+    entries.map(([key, value]) => [canonicalLookupKey(key), value])
+  );
+
+  for (const envName of Object.keys(runtimeUrls)) {
+    if (Object.hasOwn(systemEnvMap, envName)) {
+      resolved[envName] = systemEnvMap[envName];
+      continue;
+    }
+
+    const caseInsensitiveKey = findKeyCaseInsensitive(systemEnvMap, envName);
+    if (caseInsensitiveKey) {
+      resolved[envName] = systemEnvMap[caseInsensitiveKey];
+      continue;
+    }
+
+    for (const alias of systemEnvironmentAliases(envName)) {
+      const value = byCanonicalKey.get(canonicalLookupKey(alias));
+      if (value) {
+        resolved[envName] = value;
+        break;
+      }
+    }
+  }
+
+  return resolved;
 }
 
 function requireRuntimeEnvironment(runtimeUrls, requestedName, label) {
@@ -86,6 +159,10 @@ const runtimeUrls = parseJsonObject('POSTMAN_RUNTIME_URLS_JSON');
 for (const envName of Object.keys(runtimeUrls)) {
   validateEnvironmentName(envName);
 }
+const systemEnvMap = resolveSystemEnvironmentMap(
+  runtimeUrls,
+  parseOptionalJsonObject('POSTMAN_SYSTEM_ENV_MAP_JSON')
+);
 const governanceGroups = parseJsonObject('POSTMAN_GOVERNANCE_GROUPS_JSON');
 const domain = String(config.project.domain ?? '').trim();
 const governanceDomain = findKeyCaseInsensitive(governanceGroups, domain);
@@ -111,6 +188,7 @@ const outputValues = {
   POSTMAN_CI_GOVERNANCE_GROUP: governanceGroups[governanceDomain],
   POSTMAN_CI_ENVIRONMENTS_JSON: JSON.stringify(Object.keys(runtimeUrls)),
   POSTMAN_CI_RUNTIME_URLS_JSON: JSON.stringify(runtimeUrls),
+  POSTMAN_CI_SYSTEM_ENV_MAP_JSON: JSON.stringify(systemEnvMap),
   POSTMAN_CI_CONTRACT_ENVIRONMENT_NAME: contractEnvironment,
   POSTMAN_CI_SMOKE_ENVIRONMENT_NAME: smokeEnvironment
 };

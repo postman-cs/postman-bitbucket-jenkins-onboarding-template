@@ -11,6 +11,7 @@ const ciRoot = path.resolve(testDir, '..');
 const repoRoot = path.resolve(ciRoot, '..');
 const onboardingModeScript = path.join(ciRoot, 'scripts/onboarding-mode.mjs');
 const resourceEnvScript = path.join(ciRoot, 'scripts/postman-resource-env.mjs');
+const resolveRuntimeEnvScript = path.join(ciRoot, 'scripts/resolve-runtime-env.mjs');
 
 async function createFixture() {
   return mkdtemp(path.join(os.tmpdir(), 'postman-ci-resources-'));
@@ -145,14 +146,44 @@ test('Jenkins repo-sync CLI can link workspaces and sync system environments', a
   const jenkinsfile = await readFile(path.join(repoRoot, 'Jenkinsfile'), 'utf8');
 
   assert.match(jenkinsfile, /booleanParam\(name: 'POSTMAN_WORKSPACE_LINK_ENABLED'/);
-  assert.match(jenkinsfile, /booleanParam\(name: 'POSTMAN_ENVIRONMENT_SYNC_ENABLED'/);
+  assert.match(jenkinsfile, /booleanParam\(name: 'POSTMAN_ENVIRONMENT_SYNC_ENABLED', defaultValue: true/);
   assert.match(jenkinsfile, /text\(name: 'POSTMAN_SYSTEM_ENV_MAP_JSON'/);
   assert.match(jenkinsfile, /--repo-url\s+"\$BITBUCKET_HTTPS_REMOTE_URL"/);
   assert.match(jenkinsfile, /--workspace-link-enabled\s+"\$POSTMAN_WORKSPACE_LINK_ENABLED"/);
   assert.match(jenkinsfile, /--environment-sync-enabled\s+"\$POSTMAN_ENVIRONMENT_SYNC_ENABLED"/);
-  assert.match(jenkinsfile, /--system-env-map-json\s+"\$POSTMAN_SYSTEM_ENV_MAP_JSON"/);
+  assert.match(jenkinsfile, /--system-env-map-json\s+"\$POSTMAN_CI_SYSTEM_ENV_MAP_JSON"/);
   assert.match(jenkinsfile, /'--repo-url',\s*\$env:BITBUCKET_HTTPS_REMOTE_URL,/);
   assert.match(jenkinsfile, /'--workspace-link-enabled',\s*\$env:POSTMAN_WORKSPACE_LINK_ENABLED,/);
   assert.match(jenkinsfile, /'--environment-sync-enabled',\s*\$env:POSTMAN_ENVIRONMENT_SYNC_ENABLED,/);
-  assert.match(jenkinsfile, /'--system-env-map-json',\s*\$env:POSTMAN_SYSTEM_ENV_MAP_JSON,/);
+  assert.match(jenkinsfile, /'--system-env-map-json',\s*\$env:POSTMAN_CI_SYSTEM_ENV_MAP_JSON,/);
+});
+
+test('runtime env resolves system environment aliases to configured names', () => {
+  const result = runNode(resolveRuntimeEnvScript, [], {
+    cwd: repoRoot,
+    env: {
+      POSTMAN_RUNTIME_URLS_JSON: '{"TEST":"http://localhost:3000","STAGE":"https://stage.example.com","PROD":"https://api.example.com"}',
+      POSTMAN_SYSTEM_ENV_MAP_JSON: '{"testing":"test-id","staging":"stage-id","production":"prod-id"}'
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(
+    result.stdout,
+    /^POSTMAN_CI_SYSTEM_ENV_MAP_JSON='\{"TEST":"test-id","STAGE":"stage-id","PROD":"prod-id"\}'$/m
+  );
+});
+
+test('runtime env prefers exact system environment map keys over aliases', () => {
+  const result = runNode(resolveRuntimeEnvScript, [], {
+    cwd: repoRoot,
+    env: {
+      POSTMAN_RUNTIME_URLS_JSON: '{"TEST":"http://localhost:3000"}',
+      POSTMAN_SYSTEM_ENV_MAP_JSON: '{"testing":"alias-id","test":"case-id","TEST":"exact-id"}',
+      POSTMAN_SMOKE_ENVIRONMENT: 'TEST'
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^POSTMAN_CI_SYSTEM_ENV_MAP_JSON='\{"TEST":"exact-id"\}'$/m);
 });

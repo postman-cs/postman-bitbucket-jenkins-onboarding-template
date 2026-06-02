@@ -127,7 +127,7 @@ pipeline {
     text(name: 'POSTMAN_RUNTIME_URLS_JSON', defaultValue: '{"TEST":"http://localhost:3000","STAGE":"https://stage.example.com","PROD":"https://api.example.com"}', description: 'JSON object mapping Postman environment names to base URLs.')
     text(name: 'POSTMAN_GOVERNANCE_GROUPS_JSON', defaultValue: '{"sample-domain":"api-governance-group"}', description: 'JSON object mapping project.domain values to Postman Governance group names.')
     booleanParam(name: 'POSTMAN_WORKSPACE_LINK_ENABLED', defaultValue: true, description: 'Link the Postman workspace to the Bitbucket repository.')
-    booleanParam(name: 'POSTMAN_ENVIRONMENT_SYNC_ENABLED', defaultValue: false, description: 'Associate Postman environments to system environments when POSTMAN_SYSTEM_ENV_MAP_JSON is configured.')
+    booleanParam(name: 'POSTMAN_ENVIRONMENT_SYNC_ENABLED', defaultValue: true, description: 'Associate Postman environments to system environments when POSTMAN_SYSTEM_ENV_MAP_JSON is configured.')
     text(name: 'POSTMAN_SYSTEM_ENV_MAP_JSON', defaultValue: '{}', description: 'JSON object mapping Postman environment names to Postman system environment IDs.')
     string(name: 'POSTMAN_CONTRACT_ENVIRONMENT', defaultValue: 'TEST', description: 'Environment name used for local Contract collection runs. Must exist in POSTMAN_RUNTIME_URLS_JSON.')
     string(name: 'POSTMAN_SMOKE_ENVIRONMENT', defaultValue: 'STAGE', description: 'Environment name used for Smoke collection runs. Must exist in POSTMAN_RUNTIME_URLS_JSON.')
@@ -550,7 +550,7 @@ REPO_SYNC_ARGS=(
   --spec-sync-mode update
   --environments-json "$POSTMAN_CI_ENVIRONMENTS_JSON"
   --env-runtime-urls-json "$POSTMAN_CI_RUNTIME_URLS_JSON"
-  --system-env-map-json "$POSTMAN_SYSTEM_ENV_MAP_JSON"
+  --system-env-map-json "$POSTMAN_CI_SYSTEM_ENV_MAP_JSON"
   --generate-ci-workflow false
   --monitor-type cli
   --repo-url "$BITBUCKET_HTTPS_REMOTE_URL"
@@ -705,7 +705,7 @@ $RepoSyncArgs = @(
   '--spec-sync-mode', 'update',
   '--environments-json', $env:POSTMAN_CI_ENVIRONMENTS_JSON,
   '--env-runtime-urls-json', $env:POSTMAN_CI_RUNTIME_URLS_JSON,
-  '--system-env-map-json', $env:POSTMAN_SYSTEM_ENV_MAP_JSON,
+  '--system-env-map-json', $env:POSTMAN_CI_SYSTEM_ENV_MAP_JSON,
   '--generate-ci-workflow', 'false',
   '--monitor-type', 'cli',
   '--repo-url', $env:BITBUCKET_HTTPS_REMOTE_URL,

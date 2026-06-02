@@ -216,7 +216,7 @@ that value.
 | `POSTMAN_RUNTIME_URLS_JSON` | `{"TEST":"http://localhost:3000","STAGE":"https://stage.example.com","PROD":"https://api.example.com"}` | Environment-to-base-URL mapping |
 | `POSTMAN_GOVERNANCE_GROUPS_JSON` | `{"sample-domain":"api-governance-group"}` | `project.domain` to Governance group mapping |
 | `POSTMAN_WORKSPACE_LINK_ENABLED` | `true` | Links the Postman workspace to the Bitbucket repository |
-| `POSTMAN_ENVIRONMENT_SYNC_ENABLED` | `false` | Associates Postman environments to system environments when `POSTMAN_SYSTEM_ENV_MAP_JSON` is configured |
+| `POSTMAN_ENVIRONMENT_SYNC_ENABLED` | `true` | Associates Postman environments to system environments when `POSTMAN_SYSTEM_ENV_MAP_JSON` is configured |
 | `POSTMAN_SYSTEM_ENV_MAP_JSON` | `{}` | Environment-to-system-environment-ID mapping used by environment sync |
 | `POSTMAN_CONTRACT_ENVIRONMENT` | `TEST` | Environment used for local Contract collection runs |
 | `POSTMAN_SMOKE_ENVIRONMENT` | `STAGE` | Environment used for Smoke collection runs |
@@ -246,7 +246,10 @@ The key in `POSTMAN_GOVERNANCE_GROUPS_JSON` must match `project.domain` from
 
 `POSTMAN_WORKSPACE_LINK_ENABLED` should normally stay enabled so the Postman
 workspace is connected to the Bitbucket repository. `POSTMAN_ENVIRONMENT_SYNC_ENABLED`
-requires `POSTMAN_SYSTEM_ENV_MAP_JSON`, for example:
+uses `POSTMAN_SYSTEM_ENV_MAP_JSON` when it is configured. Keys are matched
+case-insensitively and common aliases such as `test`/`testing`,
+`stage`/`staging`, and `prod`/`production` are normalized to the runtime
+environment names before repo-sync runs. Example:
 
 ```json
 {
