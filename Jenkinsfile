@@ -518,6 +518,7 @@ node "$POSTMAN_BOOTSTRAP" "${BOOTSTRAP_ARGS[@]}"
 mkdir -p .debug/postman-smoke-flow
 SMOKE_FLOW_COLLECTION_ID="$POSTMAN_BOOTSTRAP_SMOKE_COLLECTION_ID"
 if [ -n "${POSTMAN_CI_SMOKE_FLOW_PATH:-}" ] && [ -f "$POSTMAN_CI_SMOKE_FLOW_PATH" ]; then
+  # The vendored smoke CLI is PMAK-only (its client takes only the API key), so no --postman-access-token is passed here.
   node .postman-ci/vendor/postman-smoke-flow.cjs \
     --project-name "$POSTMAN_CI_PROJECT_NAME" \
     --workspace-id "$POSTMAN_BOOTSTRAP_WORKSPACE_ID" \
@@ -671,6 +672,7 @@ Import-DotEnvFile 'postman-bootstrap.env'
 New-Item -ItemType Directory -Force -Path '.debug\\postman-smoke-flow' | Out-Null
 $SmokeFlowCollectionId = $env:POSTMAN_BOOTSTRAP_SMOKE_COLLECTION_ID
 if ((-not [string]::IsNullOrWhiteSpace($env:POSTMAN_CI_SMOKE_FLOW_PATH)) -and (Test-Path -LiteralPath $env:POSTMAN_CI_SMOKE_FLOW_PATH)) {
+  # The vendored smoke CLI is PMAK-only (its client takes only the API key), so no --postman-access-token is passed here.
   $SmokeFlowOutput = node .postman-ci/vendor/postman-smoke-flow.cjs `
     --project-name $env:POSTMAN_CI_PROJECT_NAME `
     --workspace-id $env:POSTMAN_BOOTSTRAP_WORKSPACE_ID `
